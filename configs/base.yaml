@@ -1,0 +1,62 @@
+# Single source of truth for one experiment: data version, preprocessing,
+# model and training.  Seeds are passed on the command line (--seed).
+
+data:
+  out_dir: data/processed
+  cache_dir: ~/.cache/mathocr
+  oleehyo_shards: [0, 1, 2, 3, 4, 5]
+  oleehyo_train_size: 150000
+  oleehyo_val_permille: 15
+  oleehyo_test_permille: 15
+  max_tokens: 254          # model.max_len - BOS - EOS
+  min_token_freq: 10
+  min_fit_ratio: 0.6       # drop train images that must shrink below 0.6x glyph target to fit
+  workers: 4
+
+image:
+  target_glyph_px: 14.0
+  max_h: 192
+  max_w: 768
+  margin: 8
+  multiple: 32
+  min_scale: 0.1
+  max_scale: 4.0
+
+model:
+  cnn_channels: [64, 128, 256, 384]
+  cnn_blocks: [2, 2, 2, 2]
+  d_model: 512
+  n_heads: 8
+  enc_layers: 3
+  dec_layers: 6
+  ff_mult: 4
+  dropout: 0.1
+  max_len: 256
+
+augment:
+  scale_log_range: 0.29    # glyph-size jitter exp(U(-r, r)) = 0.75x .. 1.34x
+  p_blur: 0.25
+  blur_sigma: [0.3, 0.9]
+  p_stroke: 0.25
+  p_contrast: 0.3
+  p_noise: 0.25
+  noise_std: [2.0, 12.0]
+
+train:
+  epochs: 15
+  lr: 3.0e-4
+  weight_decay: 0.05
+  warmup_steps: 2000
+  min_lr_ratio: 0.02
+  label_smoothing: 0.1
+  grad_clip: 1.0
+  amp: true                # bf16 autocast for training; evaluation is fp32
+  pixel_budget: 1000000    # images per batch = min(max_batch, budget // (H*W))
+  max_batch: 64
+  workers: 4
+  log_every: 100
+  max_steps_per_epoch: null
+  stop_after_epoch: null   # pause after this epoch (schedule unchanged); continue with --resume
+  val_decode_samples: 2000
+  eval_pixel_budget: 2000000
+  eval_max_batch: 64

@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+data/**/*.parquet
+data/dev_*/
+runs/**/checkpoints/
+runs/**/tb/
+runs/**/eval/*.jsonl
+runs/**/eval/*.cdm.json
+runs/**/eval/cdm_work/
