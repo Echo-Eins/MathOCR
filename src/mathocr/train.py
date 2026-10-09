@@ -74,7 +74,7 @@ def _lr_lambda(step: int, warmup: int, total: int, min_ratio: float) -> float:
 
 
 def _loss(model: Im2Latex, batch: dict, device: torch.device, vocab: Vocab, smoothing: float,
-          amp: bool) -> tuple[torch.Tensor, int]:
+          amp: bool) -> tuple[torch.Tensor, int, torch.Tensor]:
     images = batch["images"].to(device, non_blocking=True)
     tokens = batch["tokens"].to(device, non_blocking=True)
     with torch.autocast("cuda", dtype=torch.bfloat16, enabled=amp and device.type == "cuda"):
@@ -82,25 +82,30 @@ def _loss(model: Im2Latex, batch: dict, device: torch.device, vocab: Vocab, smoo
     target = tokens[:, 1:]
     loss = F.cross_entropy(logits.float().reshape(-1, logits.shape[-1]), target.reshape(-1),
                            ignore_index=vocab.pad_id, label_smoothing=smoothing)
-    return loss, int((target != vocab.pad_id).sum())
+    return loss, int((target != vocab.pad_id).sum()), logits
 
 
 @torch.no_grad()
 def validate(model: Im2Latex, store: CropStore, sampler: ShapeBatchSampler, items: TrainItems, vocab: Vocab,
              device: torch.device, tcfg: dict, icfg: ImageConfig) -> dict:
     model.eval()
-    total, count = 0.0, 0
+    total, count, first_ok, samples = 0.0, 0, 0, 0
     for keys in sampler:
         batch = collate([items[k] for k in keys], vocab.pad_id)
-        loss, n = _loss(model, batch, device, vocab, 0.0, tcfg["amp"])
+        loss, n, logits = _loss(model, batch, device, vocab, 0.0, tcfg["amp"])
         total += float(loss) * n
         count += n
+        # The first token has no prefix to lean on: it is read off the image
+        # alone, so this tracks whether the decoder uses the encoder at all.
+        first_ok += int((logits[:, 0].argmax(-1).cpu() == batch["tokens"][:, 1]).sum())
+        samples += len(keys)
     n_dec = min(len(store), int(tcfg["val_decode_samples"]))
     stride = len(store) / n_dec
     indices = sorted({int(i * stride) for i in range(n_dec)})
     preds = decode_store(model, store, icfg, vocab, device, tcfg["eval_pixel_budget"], tcfg["eval_max_batch"], indices)
     metrics = text_metrics(preds, [store.labels[i] for i in indices])
-    return {"val_loss": total / count, **{f"val_{k}": v for k, v in metrics.items()}}
+    return {"val_loss": total / count, "val_first_token_acc": first_ok / samples,
+            **{f"val_{k}": v for k, v in metrics.items()}}
 
 
 def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
@@ -168,11 +173,11 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
         for epoch in range(start_epoch, tcfg["epochs"]):
             sampler.set_epoch(epoch)
             model.train()
-            t0, seen_tokens, running = time.time(), 0, 0.0
+            t0, seen_tokens, running, running_n = time.time(), 0, 0.0, 0
             for i, batch in enumerate(loader):
                 if i >= steps_per_epoch:
                     break
-                loss, n = _loss(model, batch, device, vocab, tcfg["label_smoothing"], tcfg["amp"])
+                loss, n, _ = _loss(model, batch, device, vocab, tcfg["label_smoothing"], tcfg["amp"])
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), tcfg["grad_clip"])
@@ -181,11 +186,12 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
                 step += 1
                 seen_tokens += n
                 running += float(loss)
+                running_n += 1
                 if step % tcfg["log_every"] == 0:
-                    rec = {"step": step, "epoch": epoch, "loss": running / tcfg["log_every"],
+                    rec = {"step": step, "epoch": epoch, "loss": running / running_n,
                            "grad_norm": float(grad_norm), "lr": sched.get_last_lr()[0],
                            "tokens_per_s": seen_tokens / (time.time() - t0)}
-                    running = 0.0
+                    running, running_n = 0.0, 0
                     log.write(json.dumps(rec) + "\n")
                     log.flush()
                     for k in ("loss", "grad_norm", "lr", "tokens_per_s"):
