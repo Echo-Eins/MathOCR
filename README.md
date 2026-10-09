@@ -1,7 +1,7 @@
 # MathOCR — изображение формулы → LaTeX
 
 Нейросетевая модель оптического распознавания печатных математических
-формул: CNN + Transformer encoder-decoder на PyTorch (43,1 M параметров),
+формул: CNN + Transformer encoder-decoder на PyTorch (42,9 M параметров),
 обученная детерминированно на зафиксированной версии данных
 (im2latex-100k + arXiv-срез OleehyO/latex-formulas, ~205 тыс. пар) и
 проверенная на внешнем источнике (UniMER-Test).

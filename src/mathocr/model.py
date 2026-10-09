@@ -1,7 +1,7 @@
 """Image-to-LaTeX encoder-decoder.
 
-Encoder: ResNet-style CNN (BasicBlocks, total stride 16 vertically and 8
-horizontally -- formulas are wide and sub/superscripts need horizontal
+Encoder: ResNet-D-style CNN (BasicBlocks with average-pooling shortcuts,
+total stride 16 vertically and 8 horizontally -- formulas are wide and sub/superscripts need horizontal
 resolution) -> fixed 2D sinusoidal positions -> pre-LN Transformer encoder
 for global context.
 
@@ -47,7 +47,12 @@ class BasicBlock(nn.Module):
         self.bn2 = nn.BatchNorm2d(c_out)
         self.skip = None
         if stride != (1, 1) or c_in != c_out:
-            self.skip = nn.Sequential(nn.Conv2d(c_in, c_out, 1, stride=stride, bias=False), nn.BatchNorm2d(c_out))
+            # ResNet-D shortcut: average, then 1x1.  A strided 1x1 conv reads
+            # one pixel in four and drops thin (1-2 px) formula strokes; with
+            # it the model barely read the image (first-token accuracy 0.13 vs
+            # 0.71 on a 20k-sample probe, scripts/diagnostics).
+            pool = nn.AvgPool2d(stride, stride, ceil_mode=True, count_include_pad=False) if stride != (1, 1) else nn.Identity()
+            self.skip = nn.Sequential(pool, nn.Conv2d(c_in, c_out, 1, bias=False), nn.BatchNorm2d(c_out))
 
     def forward(self, x: Tensor) -> Tensor:
         y = F.relu(self.bn1(self.conv1(x)))
@@ -197,13 +202,13 @@ class Im2Latex(nn.Module):
             if p.dim() > 1 and not name.startswith("backbone"):
                 nn.init.xavier_uniform_(p)
         nn.init.normal_(self.embed.weight, std=self.cfg.d_model**-0.5)
+        # Residual branches are NOT zero-initialized: at init the signal would
+        # then pass only through the downsampling shortcuts, and the probe
+        # learned the image more slowly (first-token accuracy 0.71 -> 0.76
+        # with both fixes, 0.60 with this one alone).
         for m in self.backbone.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
-        # Zero-init the last BN of each residual branch: blocks start as identity.
-        for m in self.backbone.modules():
-            if isinstance(m, BasicBlock):
-                nn.init.zeros_(m.bn2.weight)
 
     # -- encoder
     def encode(self, images: Tensor) -> Tensor:
