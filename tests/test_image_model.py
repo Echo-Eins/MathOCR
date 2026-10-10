@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import torch
 from PIL import Image
 
@@ -39,12 +40,26 @@ def test_inverted_and_transparent_inputs():
     assert np.abs(prepare(im, cfg).astype(int) - prepare(rgba, cfg).astype(int)).max() <= 2
 
 
-def test_cached_greedy_equals_full_forward():
+@pytest.mark.parametrize("variant", [{}, {"encoder": "aas"}, {"encoder": "aas_sort", "sort_window": 4},
+                                     {"rings": True, "inject": True}, {"depth_pos": True, "open_id": 1, "close_id": 3},
+                                     {"fovea": True, "fovea_layer": 1, "fovea_levels": 3},
+                                     {"count_head": True, "count_feed": True},
+                                     {"ring_bias": True, "coverage": True},
+                                     {"deform_layers": 2},
+                                     {"enc_stride": "8x4", "ring_bias": True, "coverage": True}])
+def test_cached_greedy_equals_full_forward(variant):
     torch.manual_seed(0)
     m = Im2Latex(ModelConfig(vocab_size=50, cnn_channels=(16, 16, 32, 32), cnn_blocks=(1, 1, 1, 1),
-                             d_model=64, n_heads=4, enc_layers=1, dec_layers=2, max_len=24)).eval()
+                             d_model=64, n_heads=4, enc_layers=1, dec_layers=2, max_len=24, **variant)).eval()
+    if getattr(m, "feedback", None) is not None:  # tables start at zero: make the feedback act
+        with torch.no_grad():
+            for f in m.feedback:
+                f.ring_table.normal_(0, 1.0)
+                f.coverage_gamma.fill_(0.5)
     x = torch.rand(3, 1, 64, 160)
     out = m.generate(x, bos_id=1, eos_id=2)
+    if "depth_pos" in variant:  # the untrained model repeats BOS: with BOS as "open" the depth keeps changing
+        assert bool((out == 1).any())
     seq = torch.full((3, 1), 1)
     for _ in range(out.shape[1]):
         nxt = m(x, seq)[:, -1].argmax(-1, keepdim=True)

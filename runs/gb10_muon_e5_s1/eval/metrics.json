@@ -1,0 +1,72 @@
+{
+  "checkpoint": "best.pt",
+  "epoch": 4,
+  "seed": 1,
+  "determinism": {
+    "deterministic_algorithms": true,
+    "cublas_workspace_config": ":4096:8",
+    "cudnn_benchmark": false,
+    "cudnn_deterministic": true,
+    "allow_tf32": false,
+    "torch": "2.11.0+cu130",
+    "cuda": "13.0",
+    "cudnn": 91900,
+    "device": "NVIDIA GB10"
+  },
+  "splits": {
+    "test_im2latex": {
+      "n": 6788,
+      "exact_match": 0.5083971714790807,
+      "edit_distance": 0.05371858918713154,
+      "token_edit_distance": 0.0498764361965351,
+      "bleu": 0.9197259268521074,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    },
+    "test_oleehyo": {
+      "n": 6620,
+      "exact_match": 0.5561933534743202,
+      "edit_distance": 0.0410353793168351,
+      "token_edit_distance": 0.03525188178216056,
+      "bleu": 0.9451167470025855,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    },
+    "ood_cpe": {
+      "n": 5921,
+      "exact_match": 0.006248944435061645,
+      "edit_distance": 0.3094284305052814,
+      "token_edit_distance": 0.2738119666330032,
+      "bleu": 0.6088852790779591,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    },
+    "ood_sce": {
+      "n": 4742,
+      "exact_match": 0.200970054829186,
+      "edit_distance": 0.38498948325544663,
+      "token_edit_distance": 0.33978364579391873,
+      "bleu": 0.4198344227692537,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    },
+    "ood_spe": {
+      "n": 6762,
+      "exact_match": 0.2023070097604259,
+      "edit_distance": 0.17339523301555873,
+      "token_edit_distance": 0.15549315229374877,
+      "bleu": 0.7871611909927991,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    },
+    "ood_hwe": {
+      "n": 6332,
+      "exact_match": 0.0011054958938723942,
+      "edit_distance": 0.8086543019137281,
+      "token_edit_distance": 0.7833995143003825,
+      "bleu": 0.03951604980396931,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    }
+  }
+}

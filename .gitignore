@@ -5,7 +5,7 @@ __pycache__/
 *.egg-info/
 data/**/*.parquet
 data/dev_*/
-runs/**/checkpoints/
+runs/**/checkpoints
 runs/**/tb/
 runs/**/eval/*.jsonl
 runs/**/eval/*.cdm.json

@@ -1,0 +1,38 @@
+{
+  "ood_cpe": {
+    "cdm": 0.715,
+    "cdm_exp_rate": 0.091,
+    "scored": 1000,
+    "submitted": 1000
+  },
+  "ood_hwe": {
+    "cdm": 0.235,
+    "cdm_exp_rate": 0.003,
+    "scored": 1000,
+    "submitted": 1000
+  },
+  "ood_sce": {
+    "cdm": 0.831,
+    "cdm_exp_rate": 0.498,
+    "scored": 1000,
+    "submitted": 1000
+  },
+  "ood_spe": {
+    "cdm": 0.931,
+    "cdm_exp_rate": 0.584,
+    "scored": 1000,
+    "submitted": 1000
+  },
+  "test_im2latex": {
+    "cdm": 0.993,
+    "cdm_exp_rate": 0.926,
+    "scored": 1000,
+    "submitted": 1000
+  },
+  "test_oleehyo": {
+    "cdm": 0.991,
+    "cdm_exp_rate": 0.868,
+    "scored": 999,
+    "submitted": 1000
+  }
+}

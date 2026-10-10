@@ -55,7 +55,7 @@ def evaluate(run_dir: Path, data_dir: Path, splits: list[str], checkpoint: str, 
     results = {"checkpoint": checkpoint, "epoch": ckpt.get("epoch"), "seed": ckpt.get("seed"), "determinism": det,
                "splits": {}}
     for split in splits:
-        store = CropStore(data_dir / f"{split}.parquet")
+        store = CropStore(data_dir / f"{split}.parquet", vocab)  # targets are needed to collate batches
         preds = decode_store(model, store, icfg, vocab, device, pixel_budget, max_batch)
         with (out_dir / f"{split}.jsonl").open("w", encoding="utf-8") as f:
             for uid, gt, pred in zip(store.uids, store.labels, preds):

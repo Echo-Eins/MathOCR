@@ -40,6 +40,7 @@ from mathocr.image import ImageConfig
 from mathocr.infer import decode_store
 from mathocr.metrics import text_metrics
 from mathocr.model import Im2Latex, ModelConfig, count_parameters
+from mathocr.optim import build_optimizer
 from mathocr.tokenizer import Vocab
 
 
@@ -59,13 +60,6 @@ def _worker_init(_: int) -> None:
     torch.set_num_threads(1)
 
 
-def _param_groups(model: torch.nn.Module, weight_decay: float) -> list[dict]:
-    decay, no_decay = [], []
-    for name, p in model.named_parameters():
-        (decay if p.dim() >= 2 and "embed" not in name else no_decay).append(p)
-    return [{"params": decay, "weight_decay": weight_decay}, {"params": no_decay, "weight_decay": 0.0}]
-
-
 def _lr_lambda(step: int, warmup: int, total: int, min_ratio: float) -> float:
     if step < warmup:
         return (step + 1) / warmup
@@ -73,16 +67,47 @@ def _lr_lambda(step: int, warmup: int, total: int, min_ratio: float) -> float:
     return min_ratio + (1 - min_ratio) * 0.5 * (1 + math.cos(math.pi * progress))
 
 
+# Tokens with no ink of their own: grouping, scripts, alignment, spacing,
+# invisible delimiters and style switches.  The count head counts the rest.
+STRUCTURAL = {"{", "}", "^", "_", "&", "\\\\", "\\", "~", "\\,", "\\;", "\\:", "\\!", "\\quad", "\\qquad",
+              "\\left.", "\\right.", "\\displaystyle", "\\textstyle", "\\scriptstyle", "\\scriptscriptstyle",
+              "\\limits", "\\nolimits", "\\begin{array}", "\\end{array}", "\\begin{aligned}", "\\end{aligned}"}
+
+
+def countable_mask(vocab: Vocab) -> torch.Tensor:
+    return torch.tensor([i >= 4 and t not in STRUCTURAL for i, t in enumerate(vocab.itos)])
+
+
 def _loss(model: Im2Latex, batch: dict, device: torch.device, vocab: Vocab, smoothing: float,
-          amp: bool) -> tuple[torch.Tensor, int, torch.Tensor]:
+          amp: bool, count_weight: float = 0.0, countable: torch.Tensor | None = None,
+          token_dropout: float = 0.0) -> tuple[torch.Tensor, int, torch.Tensor, dict]:
     images = batch["images"].to(device, non_blocking=True)
     tokens = batch["tokens"].to(device, non_blocking=True)
+    tokens_in = tokens[:, :-1]
+    if token_dropout > 0:
+        # Hide part of the teacher-forced prefix (<unk>), so the next token has
+        # to be read off the image rather than guessed from the LaTeX so far.
+        # Drawn from the seeded global generator: reproducible.
+        hide = (torch.rand(tokens_in.shape, device=device) < token_dropout) & (tokens_in > vocab.unk_id)
+        tokens_in = tokens_in.masked_fill(hide, vocab.unk_id)
+    want_aux = count_weight > 0
     with torch.autocast("cuda", dtype=torch.bfloat16, enabled=amp and device.type == "cuda"):
-        logits = model(images, tokens[:, :-1])
+        out = model(images, tokens_in, return_aux=want_aux)
+    logits, aux = out if want_aux else (out, {})
     target = tokens[:, 1:]
     loss = F.cross_entropy(logits.float().reshape(-1, logits.shape[-1]), target.reshape(-1),
                            ignore_index=vocab.pad_id, label_smoothing=smoothing)
-    return loss, int((target != vocab.pad_id).sum()), logits
+    parts = {}
+    if want_aux:
+        # Poisson NLL of the true symbol counts, per image normalized by its
+        # token count so the term has the scale of the per-token CE.
+        counts = F.one_hot(target, logits.shape[-1]).sum(dim=1).float()[:, countable]
+        log_rate = aux["log_count"][:, countable]
+        nll = (log_rate.exp() - counts * log_rate).sum(dim=1)
+        count_loss = (nll / (target != vocab.pad_id).sum(dim=1).clamp(min=1)).mean()
+        parts["count_loss"] = count_loss.detach()
+        loss = loss + count_weight * count_loss
+    return loss, int((target != vocab.pad_id).sum()), logits, parts
 
 
 @torch.no_grad()
@@ -92,7 +117,7 @@ def validate(model: Im2Latex, store: CropStore, sampler: ShapeBatchSampler, item
     total, count, first_ok, samples = 0.0, 0, 0, 0
     for keys in sampler:
         batch = collate([items[k] for k in keys], vocab.pad_id)
-        loss, n, logits = _loss(model, batch, device, vocab, 0.0, tcfg["amp"])
+        loss, n, logits, _ = _loss(model, batch, device, vocab, 0.0, tcfg["amp"])
         total += float(loss) * n
         count += n
         # The first token has no prefix to lean on: it is read off the image
@@ -120,10 +145,16 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
 
     train_store = CropStore(data_dir / "train.parquet", vocab)
     val_store = CropStore(data_dir / "val.parquet", vocab)
-    mcfg = ModelConfig(vocab_size=len(vocab), **{k: tuple(v) if isinstance(v, list) else v for k, v in cfg["model"].items()})
+    mcfg = ModelConfig(vocab_size=len(vocab), open_id=vocab.stoi.get("{", -1), close_id=vocab.stoi.get("}", -1),
+                       **{k: tuple(v) if isinstance(v, list) else v for k, v in cfg["model"].items()})
     model = Im2Latex(mcfg).to(device)
+    if tcfg.get("init_from"):
+        # Curriculum / fine-tuning: start from the weights of another run (same architecture);
+        # optimizer, schedule and data order start fresh from this run's seed.
+        model.load_state_dict(torch.load(tcfg["init_from"], map_location="cpu", weights_only=False)["model"])
 
-    sampler = ShapeBatchSampler(train_store, icfg, tcfg["pixel_budget"], tcfg["max_batch"], seed, train=True, aug_cfg=aug)
+    sampler = ShapeBatchSampler(train_store, icfg, tcfg["pixel_budget"], tcfg["max_batch"], seed, train=True, aug_cfg=aug,
+                                max_tokens=mcfg.max_len)
     items = TrainItems(train_store, icfg, aug, seed)
     loader = DataLoader(items, batch_sampler=sampler, num_workers=tcfg["workers"],
                         collate_fn=partial(collate, pad_id=vocab.pad_id), pin_memory=device.type == "cuda",
@@ -135,7 +166,9 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
     if tcfg.get("max_steps_per_epoch"):
         steps_per_epoch = min(steps_per_epoch, int(tcfg["max_steps_per_epoch"]))
     total_steps = steps_per_epoch * tcfg["epochs"]
-    opt = torch.optim.AdamW(_param_groups(model, tcfg["weight_decay"]), lr=tcfg["lr"], betas=(0.9, 0.98), eps=1e-8)
+    opt = build_optimizer(model, tcfg)
+    count_weight = float(tcfg.get("count_loss", 0.0))
+    countable = countable_mask(vocab).to(device) if count_weight > 0 else None
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, partial(_lr_lambda, warmup=tcfg["warmup_steps"], total=total_steps, min_ratio=tcfg["min_lr_ratio"]))
 
@@ -173,11 +206,12 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
         for epoch in range(start_epoch, tcfg["epochs"]):
             sampler.set_epoch(epoch)
             model.train()
-            t0, seen_tokens, running, running_n = time.time(), 0, 0.0, 0
+            t0, seen_tokens, running, running_n, clipped, aux_sums = time.time(), 0, 0.0, 0, 0, {}
             for i, batch in enumerate(loader):
                 if i >= steps_per_epoch:
                     break
-                loss, n, _ = _loss(model, batch, device, vocab, tcfg["label_smoothing"], tcfg["amp"])
+                loss, n, _, parts = _loss(model, batch, device, vocab, tcfg["label_smoothing"], tcfg["amp"],
+                                          count_weight, countable, float(tcfg.get("token_dropout", 0.0)))
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), tcfg["grad_clip"])
@@ -185,16 +219,22 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
                 sched.step()
                 step += 1
                 seen_tokens += n
-                running += float(loss)
+                running += float(loss.detach())
                 running_n += 1
+                # grad_norm is the pre-clip norm: the share of clipped steps shows
+                # whether clipping, not the LR schedule, sets the step size.
+                clipped += int(float(grad_norm) > tcfg["grad_clip"])
+                for k, v in parts.items():
+                    aux_sums[k] = aux_sums.get(k, 0.0) + float(v)
                 if step % tcfg["log_every"] == 0:
                     rec = {"step": step, "epoch": epoch, "loss": running / running_n,
-                           "grad_norm": float(grad_norm), "lr": sched.get_last_lr()[0],
-                           "tokens_per_s": seen_tokens / (time.time() - t0)}
-                    running, running_n = 0.0, 0
+                           "grad_norm": float(grad_norm), "clip_frac": clipped / running_n, "lr": sched.get_last_lr()[0],
+                           "tokens_per_s": seen_tokens / (time.time() - t0),
+                           **{k: v / running_n for k, v in aux_sums.items()}}
+                    running, running_n, clipped, aux_sums = 0.0, 0, 0, {}
                     log.write(json.dumps(rec) + "\n")
                     log.flush()
-                    for k in ("loss", "grad_norm", "lr", "tokens_per_s"):
+                    for k in ("loss", "grad_norm", "clip_frac", "lr", "tokens_per_s", *parts):
                         writer.add_scalar(f"train/{k}", rec[k], step)
                     print(json.dumps(rec), flush=True)
             val = validate(model, val_store, val_sampler, val_items, vocab, device, tcfg, icfg)

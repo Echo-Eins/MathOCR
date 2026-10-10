@@ -36,6 +36,13 @@ class AugmentConfig:
     p_contrast: float = 0.3
     p_noise: float = 0.25
     noise_std: tuple[float, float] = (2.0, 12.0)
+    # Multi-line composition: with probability p_stack a training sample is 2..stack_max
+    # formulas, each brought to the target glyph height, stacked left-aligned with a gap of
+    # stack_gap glyph heights; its label is \begin{array} { l } { f1 } \\ { f2 } ... \end{array}
+    # (the normalizer's own spelling of multi-line formulas).
+    p_stack: float = 0.0
+    stack_max: int = 3
+    stack_gap: float = 0.6
 
 
 class CropStore:
@@ -54,6 +61,7 @@ class CropStore:
         self.sources = table["source"].to_pylist()
         self.labels = table["label"].to_pylist()
         self.targets = None
+        self.vocab = vocab
         if vocab is not None:
             ids = [vocab.encode(tokenize(label)) for label in self.labels]
             lens = np.fromiter((len(i) for i in ids), dtype=np.int64, count=len(ids))
@@ -75,6 +83,51 @@ class CropStore:
 
     def shape(self, i: int, cfg: ImageConfig, jitter: float = 1.0) -> tuple[int, int]:
         return output_shape(int(self.h[i]), int(self.w[i]), float(self.glyph[i]), cfg, jitter)
+
+
+def _glyph_scale(glyph: float, cfg: ImageConfig) -> float:
+    s = cfg.target_glyph_px / glyph if glyph > 0 else 1.0
+    return min(max(s, cfg.min_scale), cfg.max_scale)
+
+
+def _part_size(store: CropStore, j: int, cfg: ImageConfig) -> tuple[int, int]:
+    s = _glyph_scale(float(store.glyph[j]), cfg)
+    return max(1, round(int(store.h[j]) * s)), max(1, round(int(store.w[j]) * s))
+
+
+def stacked_size(store: CropStore, idx: Sequence[int], cfg: ImageConfig, aug: AugmentConfig) -> tuple[int, int]:
+    """Crop size of the composition of ``idx`` (computable from metadata alone)."""
+
+    parts = [_part_size(store, j, cfg) for j in idx]
+    gap = round(aug.stack_gap * cfg.target_glyph_px)
+    return sum(h for h, _ in parts) + gap * (len(parts) - 1), max(w for _, w in parts)
+
+
+def stacked_crop(store: CropStore, idx: Sequence[int], cfg: ImageConfig, aug: AugmentConfig) -> Crop:
+    """Formulas ``idx`` at the target glyph height, stacked left-aligned on white paper."""
+
+    h, w = stacked_size(store, idx, cfg, aug)
+    canvas = np.full((h, w), 255, dtype=np.uint8)
+    gap, y = round(aug.stack_gap * cfg.target_glyph_px), 0
+    for j in idx:
+        ph, pw = _part_size(store, j, cfg)
+        part = Image.fromarray(store.crop(j).pixels, mode="L").resize((pw, ph), Image.Resampling.BICUBIC)
+        canvas[y : y + ph, :pw] = np.asarray(part)
+        y += ph + gap
+    return Crop(canvas, float(cfg.target_glyph_px))
+
+
+def stacked_target(store: CropStore, idx: Sequence[int]) -> np.ndarray:
+    r"""BOS \begin{array} { l } { f1 } \\ { f2 } ... \end{array} EOS as token ids."""
+
+    v = store.vocab
+    ids = [v.bos_id, *(v.stoi[t] for t in ("\\begin{array}", "{", "l", "}"))]
+    for n, j in enumerate(idx):
+        if n:
+            ids.append(v.stoi["\\\\"])
+        ids += [v.stoi["{"], *store.target(j)[1:-1].tolist(), v.stoi["}"]]
+    ids += [v.stoi["\\end{array}"], v.eos_id]
+    return np.asarray(ids, dtype=np.int64)
 
 
 def augment(arr: np.ndarray, rng: np.random.Generator, cfg: AugmentConfig) -> np.ndarray:
@@ -102,12 +155,18 @@ class TrainItems(Dataset):
     def __len__(self) -> int:
         return len(self.store)
 
-    def __getitem__(self, key: tuple[int, float, int]) -> tuple[torch.Tensor, np.ndarray, int]:
-        i, jitter, epoch = key
-        arr = layout(self.store.crop(i), self.image_cfg, jitter)
+    def __getitem__(self, key: tuple) -> tuple[torch.Tensor, np.ndarray, int]:
+        i, jitter, epoch = key[:3]
+        partners = key[3] if len(key) > 3 else ()
+        if partners:
+            idx = (i, *partners)
+            arr = layout(stacked_crop(self.store, idx, self.image_cfg, self.aug_cfg), self.image_cfg, jitter)
+            target = stacked_target(self.store, idx)
+        else:
+            arr, target = layout(self.store.crop(i), self.image_cfg, jitter), self.store.target(i)
         if self.aug_cfg is not None:
             arr = augment(arr, sample_rng(self.seed, epoch, i), self.aug_cfg)
-        return to_tensor(arr), self.store.target(i), i
+        return to_tensor(arr), target, i
 
 
 def collate(batch: list[tuple[torch.Tensor, np.ndarray, int]], pad_id: int) -> dict[str, torch.Tensor]:
@@ -130,8 +189,8 @@ class ShapeBatchSampler(Sampler[list[tuple[int, float, int]]]):
 
     def __init__(self, store: CropStore, image_cfg: ImageConfig, pixel_budget: int, max_batch: int,
                  seed: int, train: bool, aug_cfg: AugmentConfig | None = None,
-                 indices: Sequence[int] | None = None):
-        self.store, self.image_cfg = store, image_cfg
+                 indices: Sequence[int] | None = None, max_tokens: int = 256):
+        self.store, self.image_cfg, self.max_tokens = store, image_cfg, max_tokens
         self.indices = range(len(store)) if indices is None else sorted(set(indices))
         self.pixel_budget, self.max_batch = pixel_budget, max_batch
         self.seed, self.train, self.aug_cfg = seed, train, aug_cfg
@@ -148,9 +207,15 @@ class ShapeBatchSampler(Sampler[list[tuple[int, float, int]]]):
             jitters = np.exp(epoch_rng(self.seed, self.epoch, 0).uniform(-r, r, size=n))
         else:
             jitters = np.ones(n)
+        partners = self._partners(n) if self.train and self.aug_cfg is not None and self.aug_cfg.p_stack > 0 else {}
         groups: dict[tuple[int, int], list[int]] = defaultdict(list)
         for i in self.indices:
-            groups[self.store.shape(i, self.image_cfg, float(jitters[i]))].append(i)
+            if i in partners:
+                h, w = stacked_size(self.store, (i, *partners[i]), self.image_cfg, self.aug_cfg)
+                shape = output_shape(h, w, self.image_cfg.target_glyph_px, self.image_cfg, float(jitters[i]))
+            else:
+                shape = self.store.shape(i, self.image_cfg, float(jitters[i]))
+            groups[shape].append(i)
         order_rng = epoch_rng(self.seed, self.epoch, 1)
         batches = []
         for shape in sorted(groups):
@@ -159,10 +224,34 @@ class ShapeBatchSampler(Sampler[list[tuple[int, float, int]]]):
                 idx = idx[order_rng.permutation(len(idx))]
             size = max(1, min(self.max_batch, self.pixel_budget // (shape[0] * shape[1])))
             for start in range(0, len(idx), size):
-                batches.append([(int(i), float(jitters[i]), self.epoch) for i in idx[start : start + size]])
+                batches.append([(int(i), float(jitters[i]), self.epoch, *((partners[int(i)],) if int(i) in partners else ()))
+                                for i in idx[start : start + size]])
         if self.train:
             batches = [batches[j] for j in order_rng.permutation(len(batches))]
         return batches
+
+    def _partners(self, n: int) -> dict[int, tuple[int, ...]]:
+        """Per sample (epoch-seeded): whether it becomes a multi-line composition and with
+        which other training formulas; partners are dropped from the end until the label
+        fits ``max_tokens``.  Arrays of size n are drawn regardless, so the draws of one
+        sample never depend on another's."""
+
+        aug, rng = self.aug_cfg, epoch_rng(self.seed, self.epoch, 2)
+        pool = np.asarray(self.indices)
+        draw = rng.random(n)
+        count = rng.integers(2, aug.stack_max + 1, size=n)
+        pick = pool[rng.integers(0, len(pool), size=(n, max(1, aug.stack_max - 1)))]
+        lengths = np.diff(self.store.target_offsets) - 2  # without BOS/EOS
+        out = {}
+        for i in self.indices:
+            if draw[i] >= aug.p_stack:
+                continue
+            chosen = [int(j) for j in pick[i, : count[i] - 1]]
+            while chosen and lengths[i] + sum(lengths[j] for j in chosen) + 3 * len(chosen) + 7 > self.max_tokens:
+                chosen.pop()
+            if chosen:
+                out[i] = tuple(chosen)
+        return out
 
     def batches(self) -> list[list[tuple[int, float, int]]]:
         if self._cache is None or self._cache[0] != self.epoch:

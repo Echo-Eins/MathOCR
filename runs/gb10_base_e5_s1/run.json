@@ -1,0 +1,30 @@
+{
+  "seed": 1,
+  "config_sha256": "ec8a9e0c8e3b4be6358a21f33f8bf689768d2ff9a50eeed698b28553158c1c49",
+  "git_commit": "424d8424361745d582c306fe1a40db62f635877d-dirty",
+  "data_splits": {
+    "ood_cpe": "0b16df24ff2010f348f777b1195ff4e840949b24ffe8e78fa914654a1397cb5a",
+    "ood_hwe": "9db0f05f4ff23e7a7dd6d5a84957f0e9b6f8a945baf9cb4beb31b0e6387b46a6",
+    "ood_sce": "a9b6775c3c3d092367dd9189d4b8bf837b9af6cfe7255fc45aae45c5d36958e4",
+    "ood_spe": "e9dc34524cd2741e4d315a3447468c4bf95d8eb6d8c7bf4f1129934770b63bf4",
+    "test_im2latex": "0ceeaa500ed362a0c9bf3cdca3a7976ff93b42f49174b1514cbc4db92d774c58",
+    "test_oleehyo": "8d9bb65070685a4e52d1e6597dc55f71d1866c12a312ab76b4b75dd4da94c883",
+    "train": "2338708f1e9c9effe9860db48b78e36bbf295cdda0dfc33447b572e622d75f7b",
+    "val": "27146c61d85d5bf78698d1312470c240871013993e28897eeda94bf559870edf"
+  },
+  "vocab_sha256": "d2bfab974d9bd80cb93da70b17dfe651c1f747da834706856dbc0a16af1d3ccb",
+  "parameters": 42936512,
+  "steps_per_epoch": 7457,
+  "determinism": {
+    "deterministic_algorithms": true,
+    "cublas_workspace_config": ":4096:8",
+    "cudnn_benchmark": false,
+    "cudnn_deterministic": true,
+    "allow_tf32": false,
+    "torch": "2.11.0+cu130",
+    "cuda": "13.0",
+    "cudnn": 91900,
+    "device": "NVIDIA GB10"
+  },
+  "python": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]"
+}
