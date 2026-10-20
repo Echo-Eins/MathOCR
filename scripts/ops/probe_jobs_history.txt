@@ -1,0 +1,71 @@
+# History of the probe-stand queue on GB10 (2026-10-09..12): every probe that ran, in order, with its overrides.
+# Results: docs/probe_results/summary.jsonl.  Data subset: scripts/probe.py (20k train, 800 val, 300 x CPE/SCE/SPE).
+# name|seed|overrides (probe stand, 20k pairs x 4 epochs)
+# phase 1 (AdamW control)
+ctrl_s1|1|
+muon_s1|1|train.optimizer=muon
+reeval_ctrl_s1|1|
+# phase 2: Muon is the new control (2.4x EM, half the steps to the AdamW end point); mechanisms on top of it
+muon_s2|2|train.optimizer=muon
+m_aas_s1|1|train.optimizer=muon model.encoder=aas
+m_fovea_s1|1|train.optimizer=muon model.fovea=true
+m_long_s1|1|train.optimizer=muon model.max_len=512 image.max_h=384 image.max_w=1536
+m_stack_s1|1|train.optimizer=muon model.max_len=512 image.max_h=384 image.max_w=1536 augment.p_stack=0.3
+trace_m_fovea_s1|1|
+m_long_e6_s1|1|train.optimizer=muon model.max_len=512 image.max_h=384 image.max_w=1536 train.epochs=6
+m_coarse2_s1|1|train.optimizer=muon model.coarse=2
+m_foveac2_s1|1|train.optimizer=muon model.fovea=true model.coarse=2
+trace_m_foveac2_s1|1|
+m_canvas_s1|1|train.optimizer=muon image.max_h=256 image.max_w=1536
+m_countfeed_s1|1|train.optimizer=muon model.count_head=true model.count_feed=true train.count_loss=0.5
+cur_c2_from_ctrl_s1|1|train.optimizer=muon model.coarse=2 train.epochs=2 train.init_from=/mnt/SSD/MathOCR/probe/runs/muon_s1/checkpoints/last.pt
+cur_c2fov_from_fovea_s1|1|train.optimizer=muon model.fovea=true model.coarse=2 train.epochs=2 train.init_from=/mnt/SSD/MathOCR/probe/runs/m_fovea_s1/checkpoints/last.pt
+trace_cur_c2fov_from_fovea_s1|1|
+m_count_s1|1|train.optimizer=muon model.count_head=true train.count_loss=0.5
+m_inject_s1|1|train.optimizer=muon model.inject=true
+m_tokdrop_s1|1|train.optimizer=muon train.token_dropout=0.15
+m_aassort_s1|1|train.optimizer=muon model.encoder=aas_sort
+m_rings_s1|1|train.optimizer=muon model.rings=true
+m_depth_s1|1|train.optimizer=muon model.depth_pos=true
+ctrl_s2|2|
+m_glyph18_s1|1|train.optimizer=muon image.target_glyph_px=18.0
+m_ringbias_s1|1|train.optimizer=muon model.ring_bias=true
+muon_e5_s1|1|train.optimizer=muon train.epochs=5
+m_glyph22_s1|1|train.optimizer=muon image.target_glyph_px=22.0
+m_s8x8_s1|1|train.optimizer=muon model.enc_stride=8x8
+m_s8x4_s1|1|train.optimizer=muon model.enc_stride=8x4
+m_coverage_s1|1|train.optimizer=muon model.coverage=true
+m_ringcov_s1|1|train.optimizer=muon model.ring_bias=true model.coverage=true
+m_ringbias_lr30_s1|1|train.optimizer=muon model.ring_bias=true train.feedback_lr_mult=30
+m_coverage_lr30_s1|1|train.optimizer=muon model.coverage=true train.feedback_lr_mult=30
+m_long_ringcov_lr30_s1|1|train.optimizer=muon model.max_len=512 image.max_h=384 image.max_w=1536 model.ring_bias=true model.coverage=true train.feedback_lr_mult=30
+muon_e6_s1|1|train.optimizer=muon train.epochs=6
+m_deform_s1|1|train.optimizer=muon model.deform_layers=2
+m_lr6_s1|1|train.optimizer=muon train.lr=6.0e-4
+m_s8x4_g18_s1|1|train.optimizer=muon model.enc_stride=8x4 image.target_glyph_px=18.0
+# (todo) m_scope_cnn_s1|1|train.optimizer=muon train.muon_scope=backbone
+# (todo) m_scope_tf_s1|1|train.optimizer=muon train.muon_scope=transformer
+# (todo) clip5_s1|1|train.grad_clip=5.0
+m_lr12_s1|1|train.optimizer=muon train.lr=1.2e-3
+m_lr6_s8x4_g18_s1|1|train.optimizer=muon train.lr=6.0e-4 model.enc_stride=8x4 image.target_glyph_px=18.0
+# phase EM (2026-10-11): decoding-time structure + training-side mode sharpening; control m_lr12_s1
+decode_m_lr6_s8x4_g18_s1|1|
+knn_m_lr6_s8x4_g18_s1|1|
+decode_m_count_s1|1|
+m_lr12_ema_s1|1|train.optimizer=muon train.lr=1.2e-3 train.ema_decay=0.999
+m_lr12_ls0_s1|1|train.optimizer=muon train.lr=1.2e-3 train.label_smoothing=0.0
+m_lr12_bidir_s1|1|train.optimizer=muon train.lr=1.2e-3 model.bidir=true
+decode_m_lr12_bidir_s1|1|
+# phase memory-distillation (2026-10-11): memory used at training only; teacher m_lr12_s1
+soft_self_m_lr12_s1|1|
+soft_knn_m_lr12_s1|1|
+m_lr12_kdself_s1|1|train.optimizer=muon train.lr=1.2e-3 train.soft_targets=/mnt/SSD/MathOCR/probe/runs/m_lr12_s1/soft_self.npz
+m_lr12_kdknn_s1|1|train.optimizer=muon train.lr=1.2e-3 train.soft_targets=/mnt/SSD/MathOCR/probe/runs/m_lr12_s1/soft_knn.npz
+knn_m_lr12_s1|1|
+decode_m_lr12_s1|1|
+# memory distillation v2: uniform smoothing kept + alternatives of the neighbours (tau 0.2, weight 0.2)
+soft_knn20_m_lr12_s1|1|
+m_lr12_kdalt_s1|1|train.optimizer=muon train.lr=1.2e-3 train.soft_targets=/mnt/SSD/MathOCR/probe/runs/m_lr12_s1/soft_knn20.npz train.soft_mode=alt train.soft_weight=0.2
+# kNN memory compressed (PCA 128): check on the probe teacher, then the final model on the test splits
+knnp128_m_lr12_s1|1|
+fknn_final_s1|1|

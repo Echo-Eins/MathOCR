@@ -1,0 +1,1375 @@
+{
+ "m_count_s1/decode.json": {
+  "val": {
+   "greedy": {
+    "em": 0.1138,
+    "edit": 0.2219,
+    "bleu": 0.7448,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.075,
+    "len_ratio": 1.0381,
+    "wrong_symbols": 0.8363,
+    "wrong_structure_only": 0.05
+   },
+   "beam3": {
+    "em": 0.1138,
+    "edit": 0.2071,
+    "bleu": 0.7467,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0762,
+    "len_ratio": 0.9596,
+    "wrong_symbols": 0.8313,
+    "wrong_structure_only": 0.055
+   },
+   "beam5": {
+    "em": 0.1138,
+    "edit": 0.2077,
+    "bleu": 0.7423,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.075,
+    "len_ratio": 0.9569,
+    "wrong_symbols": 0.8325,
+    "wrong_structure_only": 0.0537
+   },
+   "beam5_pairs": {
+    "em": 0.1138,
+    "edit": 0.2115,
+    "bleu": 0.7507,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.01,
+    "len_ratio": 0.9831,
+    "wrong_symbols": 0.835,
+    "wrong_structure_only": 0.0512
+   },
+   "consensus": {
+    "em": 0.1275,
+    "edit": 0.2011,
+    "bleu": 0.7481,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.07,
+    "len_ratio": 0.9711,
+    "wrong_symbols": 0.8013,
+    "wrong_structure_only": 0.0712
+   },
+   "beam5_count0.05": {
+    "em": 0.115,
+    "edit": 0.2036,
+    "bleu": 0.7496,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0737,
+    "len_ratio": 0.9628,
+    "wrong_symbols": 0.8287,
+    "wrong_structure_only": 0.0563
+   },
+   "beam5_count0.2": {
+    "em": 0.1075,
+    "edit": 0.2028,
+    "bleu": 0.7571,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0725,
+    "len_ratio": 0.9759,
+    "wrong_symbols": 0.8375,
+    "wrong_structure_only": 0.055
+   },
+   "beam5_count0.5": {
+    "em": 0.0975,
+    "edit": 0.2046,
+    "bleu": 0.7576,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0737,
+    "len_ratio": 0.9816,
+    "wrong_symbols": 0.85,
+    "wrong_structure_only": 0.0525
+   }
+  },
+  "ood_cpe": {
+   "greedy": {
+    "em": 0.0,
+    "edit": 0.5441,
+    "bleu": 0.3946,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.52,
+    "len_ratio": 0.9416,
+    "wrong_symbols": 1.0,
+    "wrong_structure_only": 0.0
+   },
+   "beam3": {
+    "em": 0.0,
+    "edit": 0.5304,
+    "bleu": 0.4024,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.5267,
+    "len_ratio": 0.9047,
+    "wrong_symbols": 1.0,
+    "wrong_structure_only": 0.0
+   },
+   "beam5": {
+    "em": 0.0,
+    "edit": 0.5322,
+    "bleu": 0.3919,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.5233,
+    "len_ratio": 0.9026,
+    "wrong_symbols": 1.0,
+    "wrong_structure_only": 0.0
+   },
+   "beam5_pairs": {
+    "em": 0.0,
+    "edit": 0.5401,
+    "bleu": 0.4066,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.3533,
+    "len_ratio": 0.9692,
+    "wrong_symbols": 1.0,
+    "wrong_structure_only": 0.0
+   },
+   "consensus": {
+    "em": 0.0,
+    "edit": 0.549,
+    "bleu": 0.3808,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.4967,
+    "len_ratio": 0.9214,
+    "wrong_symbols": 1.0,
+    "wrong_structure_only": 0.0
+   },
+   "beam5_count0.05": {
+    "em": 0.0,
+    "edit": 0.5314,
+    "bleu": 0.3931,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.5267,
+    "len_ratio": 0.9044,
+    "wrong_symbols": 1.0,
+    "wrong_structure_only": 0.0
+   },
+   "beam5_count0.2": {
+    "em": 0.0,
+    "edit": 0.5304,
+    "bleu": 0.3964,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.52,
+    "len_ratio": 0.9115,
+    "wrong_symbols": 1.0,
+    "wrong_structure_only": 0.0
+   },
+   "beam5_count0.5": {
+    "em": 0.0,
+    "edit": 0.5304,
+    "bleu": 0.3975,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.5167,
+    "len_ratio": 0.9138,
+    "wrong_symbols": 1.0,
+    "wrong_structure_only": 0.0
+   }
+  },
+  "ood_sce": {
+   "greedy": {
+    "em": 0.0967,
+    "edit": 0.5642,
+    "bleu": 0.169,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0433,
+    "len_ratio": 2.1524,
+    "wrong_symbols": 0.8967,
+    "wrong_structure_only": 0.0067
+   },
+   "beam3": {
+    "em": 0.1033,
+    "edit": 0.5477,
+    "bleu": 0.2503,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.02,
+    "len_ratio": 1.6242,
+    "wrong_symbols": 0.8933,
+    "wrong_structure_only": 0.0033
+   },
+   "beam5": {
+    "em": 0.1067,
+    "edit": 0.5521,
+    "bleu": 0.2148,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0233,
+    "len_ratio": 1.686,
+    "wrong_symbols": 0.89,
+    "wrong_structure_only": 0.0033
+   },
+   "beam5_pairs": {
+    "em": 0.11,
+    "edit": 0.5523,
+    "bleu": 0.2092,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0033,
+    "len_ratio": 1.7053,
+    "wrong_symbols": 0.8867,
+    "wrong_structure_only": 0.0033
+   },
+   "consensus": {
+    "em": 0.1133,
+    "edit": 0.5542,
+    "bleu": 0.1935,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0133,
+    "len_ratio": 1.7417,
+    "wrong_symbols": 0.88,
+    "wrong_structure_only": 0.0067
+   },
+   "beam5_count0.05": {
+    "em": 0.11,
+    "edit": 0.5474,
+    "bleu": 0.2163,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0267,
+    "len_ratio": 1.6768,
+    "wrong_symbols": 0.8867,
+    "wrong_structure_only": 0.0033
+   },
+   "beam5_count0.2": {
+    "em": 0.1067,
+    "edit": 0.5462,
+    "bleu": 0.2169,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0233,
+    "len_ratio": 1.6643,
+    "wrong_symbols": 0.89,
+    "wrong_structure_only": 0.0033
+   },
+   "beam5_count0.5": {
+    "em": 0.11,
+    "edit": 0.5387,
+    "bleu": 0.2181,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0233,
+    "len_ratio": 1.654,
+    "wrong_symbols": 0.8833,
+    "wrong_structure_only": 0.0067
+   }
+  },
+  "ood_spe": {
+   "greedy": {
+    "em": 0.07,
+    "edit": 0.3004,
+    "bleu": 0.6273,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0867,
+    "len_ratio": 1.1013,
+    "wrong_symbols": 0.8733,
+    "wrong_structure_only": 0.0567
+   },
+   "beam3": {
+    "em": 0.0833,
+    "edit": 0.2779,
+    "bleu": 0.6451,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0667,
+    "len_ratio": 0.9209,
+    "wrong_symbols": 0.86,
+    "wrong_structure_only": 0.0567
+   },
+   "beam5": {
+    "em": 0.0867,
+    "edit": 0.2801,
+    "bleu": 0.646,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.06,
+    "len_ratio": 0.9173,
+    "wrong_symbols": 0.8567,
+    "wrong_structure_only": 0.0567
+   },
+   "beam5_pairs": {
+    "em": 0.08,
+    "edit": 0.2843,
+    "bleu": 0.6527,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0033,
+    "len_ratio": 0.9356,
+    "wrong_symbols": 0.8633,
+    "wrong_structure_only": 0.0567
+   },
+   "consensus": {
+    "em": 0.0867,
+    "edit": 0.2732,
+    "bleu": 0.6442,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0533,
+    "len_ratio": 0.9407,
+    "wrong_symbols": 0.84,
+    "wrong_structure_only": 0.0733
+   },
+   "beam5_count0.05": {
+    "em": 0.0933,
+    "edit": 0.2784,
+    "bleu": 0.6502,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0567,
+    "len_ratio": 0.9178,
+    "wrong_symbols": 0.8467,
+    "wrong_structure_only": 0.06
+   },
+   "beam5_count0.2": {
+    "em": 0.09,
+    "edit": 0.2761,
+    "bleu": 0.654,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0567,
+    "len_ratio": 0.9223,
+    "wrong_symbols": 0.8533,
+    "wrong_structure_only": 0.0567
+   },
+   "beam5_count0.5": {
+    "em": 0.0833,
+    "edit": 0.2786,
+    "bleu": 0.654,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0567,
+    "len_ratio": 0.9274,
+    "wrong_symbols": 0.8733,
+    "wrong_structure_only": 0.0433
+   }
+  }
+ },
+ "m_lr12_bidir_s1/decode.json": {
+  "val": {
+   "greedy": {
+    "em": 0.2313,
+    "edit": 0.1236,
+    "bleu": 0.8416,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0462,
+    "len_ratio": 0.9617,
+    "wrong_symbols": 0.6288,
+    "wrong_structure_only": 0.14
+   },
+   "beam3": {
+    "em": 0.24,
+    "edit": 0.1196,
+    "bleu": 0.8427,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0437,
+    "len_ratio": 0.9572,
+    "wrong_symbols": 0.62,
+    "wrong_structure_only": 0.14
+   },
+   "beam5": {
+    "em": 0.2412,
+    "edit": 0.1193,
+    "bleu": 0.8412,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0475,
+    "len_ratio": 0.9554,
+    "wrong_symbols": 0.6175,
+    "wrong_structure_only": 0.1412
+   },
+   "beam5_pairs": {
+    "em": 0.2412,
+    "edit": 0.1205,
+    "bleu": 0.8454,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0025,
+    "len_ratio": 0.9603,
+    "wrong_symbols": 0.6175,
+    "wrong_structure_only": 0.1412
+   },
+   "consensus": {
+    "em": 0.2587,
+    "edit": 0.1153,
+    "bleu": 0.8451,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0413,
+    "len_ratio": 0.956,
+    "wrong_symbols": 0.5913,
+    "wrong_structure_only": 0.15
+   },
+   "beam5_r2l": {
+    "em": 0.2637,
+    "edit": 0.1129,
+    "bleu": 0.8501,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0375,
+    "len_ratio": 0.9608,
+    "wrong_symbols": 0.5825,
+    "wrong_structure_only": 0.1537
+   }
+  },
+  "ood_cpe": {
+   "greedy": {
+    "em": 0.0,
+    "edit": 0.4475,
+    "bleu": 0.4649,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.4667,
+    "len_ratio": 0.9324,
+    "wrong_symbols": 1.0,
+    "wrong_structure_only": 0.0
+   },
+   "beam3": {
+    "em": 0.0,
+    "edit": 0.4341,
+    "bleu": 0.47,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.4333,
+    "len_ratio": 0.8926,
+    "wrong_symbols": 1.0,
+    "wrong_structure_only": 0.0
+   },
+   "beam5": {
+    "em": 0.0,
+    "edit": 0.4349,
+    "bleu": 0.4701,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.4533,
+    "len_ratio": 0.8814,
+    "wrong_symbols": 1.0,
+    "wrong_structure_only": 0.0
+   },
+   "beam5_pairs": {
+    "em": 0.0,
+    "edit": 0.4431,
+    "bleu": 0.4831,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.2,
+    "len_ratio": 0.9298,
+    "wrong_symbols": 1.0,
+    "wrong_structure_only": 0.0
+   },
+   "consensus": {
+    "em": 0.0,
+    "edit": 0.4344,
+    "bleu": 0.4657,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.4333,
+    "len_ratio": 0.8768,
+    "wrong_symbols": 0.9967,
+    "wrong_structure_only": 0.0033
+   },
+   "beam5_r2l": {
+    "em": 0.0,
+    "edit": 0.4239,
+    "bleu": 0.4825,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.39,
+    "len_ratio": 0.9009,
+    "wrong_symbols": 1.0,
+    "wrong_structure_only": 0.0
+   }
+  },
+  "ood_sce": {
+   "greedy": {
+    "em": 0.1233,
+    "edit": 0.4972,
+    "bleu": 0.2118,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0333,
+    "len_ratio": 2.2305,
+    "wrong_symbols": 0.8567,
+    "wrong_structure_only": 0.02
+   },
+   "beam3": {
+    "em": 0.14,
+    "edit": 0.4741,
+    "bleu": 0.2633,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.01,
+    "len_ratio": 1.6476,
+    "wrong_symbols": 0.8433,
+    "wrong_structure_only": 0.0167
+   },
+   "beam5": {
+    "em": 0.14,
+    "edit": 0.4755,
+    "bleu": 0.2634,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0133,
+    "len_ratio": 1.9659,
+    "wrong_symbols": 0.8433,
+    "wrong_structure_only": 0.0167
+   },
+   "beam5_pairs": {
+    "em": 0.14,
+    "edit": 0.4754,
+    "bleu": 0.2638,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0,
+    "len_ratio": 2.1571,
+    "wrong_symbols": 0.8433,
+    "wrong_structure_only": 0.0167
+   },
+   "consensus": {
+    "em": 0.16,
+    "edit": 0.463,
+    "bleu": 0.2289,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0133,
+    "len_ratio": 2.1399,
+    "wrong_symbols": 0.8267,
+    "wrong_structure_only": 0.0133
+   },
+   "beam5_r2l": {
+    "em": 0.16,
+    "edit": 0.4656,
+    "bleu": 0.2705,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0167,
+    "len_ratio": 2.0287,
+    "wrong_symbols": 0.8133,
+    "wrong_structure_only": 0.0267
+   }
+  },
+  "ood_spe": {
+   "greedy": {
+    "em": 0.1333,
+    "edit": 0.2125,
+    "bleu": 0.7333,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0633,
+    "len_ratio": 1.1232,
+    "wrong_symbols": 0.74,
+    "wrong_structure_only": 0.1267
+   },
+   "beam3": {
+    "em": 0.1367,
+    "edit": 0.2015,
+    "bleu": 0.7407,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.06,
+    "len_ratio": 0.9714,
+    "wrong_symbols": 0.75,
+    "wrong_structure_only": 0.1133
+   },
+   "beam5": {
+    "em": 0.1367,
+    "edit": 0.2022,
+    "bleu": 0.7409,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0533,
+    "len_ratio": 0.9661,
+    "wrong_symbols": 0.7533,
+    "wrong_structure_only": 0.11
+   },
+   "beam5_pairs": {
+    "em": 0.14,
+    "edit": 0.2032,
+    "bleu": 0.744,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0,
+    "len_ratio": 0.986,
+    "wrong_symbols": 0.7467,
+    "wrong_structure_only": 0.1133
+   },
+   "consensus": {
+    "em": 0.1567,
+    "edit": 0.1923,
+    "bleu": 0.7439,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0533,
+    "len_ratio": 0.9642,
+    "wrong_symbols": 0.72,
+    "wrong_structure_only": 0.1233
+   },
+   "beam5_r2l": {
+    "em": 0.1633,
+    "edit": 0.1939,
+    "bleu": 0.7488,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0633,
+    "len_ratio": 0.9716,
+    "wrong_symbols": 0.7167,
+    "wrong_structure_only": 0.12
+   }
+  }
+ },
+ "m_lr12_s1/decode.json": {
+  "val": {
+   "greedy": {
+    "em": 0.2975,
+    "edit": 0.0964,
+    "bleu": 0.878,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0387,
+    "len_ratio": 0.972,
+    "wrong_symbols": 0.535,
+    "wrong_structure_only": 0.1675
+   },
+   "beam3": {
+    "em": 0.3125,
+    "edit": 0.0949,
+    "bleu": 0.8744,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0338,
+    "len_ratio": 0.9674,
+    "wrong_symbols": 0.5288,
+    "wrong_structure_only": 0.1588
+   },
+   "beam5": {
+    "em": 0.3125,
+    "edit": 0.0947,
+    "bleu": 0.8738,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0338,
+    "len_ratio": 0.967,
+    "wrong_symbols": 0.53,
+    "wrong_structure_only": 0.1575
+   },
+   "beam5_pairs": {
+    "em": 0.3175,
+    "edit": 0.0965,
+    "bleu": 0.8735,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0013,
+    "len_ratio": 0.969,
+    "wrong_symbols": 0.5325,
+    "wrong_structure_only": 0.15
+   },
+   "consensus": {
+    "em": 0.325,
+    "edit": 0.0927,
+    "bleu": 0.8755,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0338,
+    "len_ratio": 0.9663,
+    "wrong_symbols": 0.51,
+    "wrong_structure_only": 0.165
+   }
+  },
+  "ood_cpe": {
+   "greedy": {
+    "em": 0.0,
+    "edit": 0.4196,
+    "bleu": 0.4796,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.4167,
+    "len_ratio": 0.9338,
+    "wrong_symbols": 0.9867,
+    "wrong_structure_only": 0.0133
+   },
+   "beam3": {
+    "em": 0.0,
+    "edit": 0.3869,
+    "bleu": 0.4992,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.3433,
+    "len_ratio": 0.8821,
+    "wrong_symbols": 0.99,
+    "wrong_structure_only": 0.01
+   },
+   "beam5": {
+    "em": 0.0,
+    "edit": 0.3833,
+    "bleu": 0.4983,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.33,
+    "len_ratio": 0.8782,
+    "wrong_symbols": 0.9933,
+    "wrong_structure_only": 0.0067
+   },
+   "beam5_pairs": {
+    "em": 0.0,
+    "edit": 0.3926,
+    "bleu": 0.5085,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.1767,
+    "len_ratio": 0.9129,
+    "wrong_symbols": 0.99,
+    "wrong_structure_only": 0.01
+   },
+   "consensus": {
+    "em": 0.0,
+    "edit": 0.3968,
+    "bleu": 0.4855,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.3567,
+    "len_ratio": 0.8892,
+    "wrong_symbols": 0.9867,
+    "wrong_structure_only": 0.0133
+   }
+  },
+  "ood_sce": {
+   "greedy": {
+    "em": 0.1567,
+    "edit": 0.4548,
+    "bleu": 0.3018,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0367,
+    "len_ratio": 2.0039,
+    "wrong_symbols": 0.8067,
+    "wrong_structure_only": 0.0367
+   },
+   "beam3": {
+    "em": 0.1667,
+    "edit": 0.4229,
+    "bleu": 0.4176,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0167,
+    "len_ratio": 1.4151,
+    "wrong_symbols": 0.79,
+    "wrong_structure_only": 0.0433
+   },
+   "beam5": {
+    "em": 0.1767,
+    "edit": 0.4114,
+    "bleu": 0.4567,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0167,
+    "len_ratio": 1.369,
+    "wrong_symbols": 0.78,
+    "wrong_structure_only": 0.0433
+   },
+   "beam5_pairs": {
+    "em": 0.1767,
+    "edit": 0.4131,
+    "bleu": 0.4536,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0,
+    "len_ratio": 1.3724,
+    "wrong_symbols": 0.78,
+    "wrong_structure_only": 0.0433
+   },
+   "consensus": {
+    "em": 0.1733,
+    "edit": 0.4166,
+    "bleu": 0.4638,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0167,
+    "len_ratio": 1.3654,
+    "wrong_symbols": 0.7833,
+    "wrong_structure_only": 0.0433
+   }
+  },
+  "ood_spe": {
+   "greedy": {
+    "em": 0.1667,
+    "edit": 0.1892,
+    "bleu": 0.7525,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0433,
+    "len_ratio": 0.9883,
+    "wrong_symbols": 0.7,
+    "wrong_structure_only": 0.1333
+   },
+   "beam3": {
+    "em": 0.1767,
+    "edit": 0.1771,
+    "bleu": 0.7644,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.03,
+    "len_ratio": 0.9604,
+    "wrong_symbols": 0.6767,
+    "wrong_structure_only": 0.1467
+   },
+   "beam5": {
+    "em": 0.18,
+    "edit": 0.1751,
+    "bleu": 0.7649,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0267,
+    "len_ratio": 0.9551,
+    "wrong_symbols": 0.6733,
+    "wrong_structure_only": 0.1467
+   },
+   "beam5_pairs": {
+    "em": 0.18,
+    "edit": 0.1776,
+    "bleu": 0.7667,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0067,
+    "len_ratio": 0.9697,
+    "wrong_symbols": 0.67,
+    "wrong_structure_only": 0.15
+   },
+   "consensus": {
+    "em": 0.1733,
+    "edit": 0.174,
+    "bleu": 0.7671,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0333,
+    "len_ratio": 0.9575,
+    "wrong_symbols": 0.67,
+    "wrong_structure_only": 0.1567
+   }
+  }
+ },
+ "m_lr6_s8x4_g18_s1/decode.json": {
+  "val": {
+   "greedy": {
+    "em": 0.3937,
+    "edit": 0.0767,
+    "bleu": 0.896,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0238,
+    "len_ratio": 0.9801,
+    "wrong_symbols": 0.435,
+    "wrong_structure_only": 0.1713
+   },
+   "beam3": {
+    "em": 0.39,
+    "edit": 0.0745,
+    "bleu": 0.897,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.02,
+    "len_ratio": 0.9736,
+    "wrong_symbols": 0.4437,
+    "wrong_structure_only": 0.1663
+   },
+   "beam5": {
+    "em": 0.3912,
+    "edit": 0.0753,
+    "bleu": 0.8959,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0175,
+    "len_ratio": 0.9729,
+    "wrong_symbols": 0.4412,
+    "wrong_structure_only": 0.1675
+   },
+   "beam5_pairs": {
+    "em": 0.3912,
+    "edit": 0.0773,
+    "bleu": 0.8957,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0,
+    "len_ratio": 0.9795,
+    "wrong_symbols": 0.4437,
+    "wrong_structure_only": 0.165
+   },
+   "consensus": {
+    "em": 0.385,
+    "edit": 0.0754,
+    "bleu": 0.8952,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.02,
+    "len_ratio": 0.9721,
+    "wrong_symbols": 0.4387,
+    "wrong_structure_only": 0.1762
+   }
+  },
+  "ood_cpe": {
+   "greedy": {
+    "em": 0.0033,
+    "edit": 0.4128,
+    "bleu": 0.4852,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.49,
+    "len_ratio": 0.958,
+    "wrong_symbols": 0.9867,
+    "wrong_structure_only": 0.01
+   },
+   "beam3": {
+    "em": 0.0033,
+    "edit": 0.3924,
+    "bleu": 0.5018,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.42,
+    "len_ratio": 0.9179,
+    "wrong_symbols": 0.99,
+    "wrong_structure_only": 0.0067
+   },
+   "beam5": {
+    "em": 0.0033,
+    "edit": 0.3898,
+    "bleu": 0.5012,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.4133,
+    "len_ratio": 0.9142,
+    "wrong_symbols": 0.99,
+    "wrong_structure_only": 0.0067
+   },
+   "beam5_pairs": {
+    "em": 0.0033,
+    "edit": 0.3947,
+    "bleu": 0.5056,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.2367,
+    "len_ratio": 0.9269,
+    "wrong_symbols": 0.99,
+    "wrong_structure_only": 0.0067
+   },
+   "consensus": {
+    "em": 0.0033,
+    "edit": 0.3949,
+    "bleu": 0.493,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.4133,
+    "len_ratio": 0.9122,
+    "wrong_symbols": 0.99,
+    "wrong_structure_only": 0.0067
+   }
+  },
+  "ood_sce": {
+   "greedy": {
+    "em": 0.17,
+    "edit": 0.4195,
+    "bleu": 0.2973,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0433,
+    "len_ratio": 2.0862,
+    "wrong_symbols": 0.77,
+    "wrong_structure_only": 0.06
+   },
+   "beam3": {
+    "em": 0.1833,
+    "edit": 0.4009,
+    "bleu": 0.3761,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0333,
+    "len_ratio": 1.6865,
+    "wrong_symbols": 0.7533,
+    "wrong_structure_only": 0.0633
+   },
+   "beam5": {
+    "em": 0.1867,
+    "edit": 0.3928,
+    "bleu": 0.4434,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.02,
+    "len_ratio": 1.389,
+    "wrong_symbols": 0.7467,
+    "wrong_structure_only": 0.0667
+   },
+   "beam5_pairs": {
+    "em": 0.1833,
+    "edit": 0.3994,
+    "bleu": 0.4078,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0133,
+    "len_ratio": 1.4082,
+    "wrong_symbols": 0.75,
+    "wrong_structure_only": 0.0667
+   },
+   "consensus": {
+    "em": 0.1967,
+    "edit": 0.39,
+    "bleu": 0.3354,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0333,
+    "len_ratio": 1.7994,
+    "wrong_symbols": 0.72,
+    "wrong_structure_only": 0.0833
+   }
+  },
+  "ood_spe": {
+   "greedy": {
+    "em": 0.1933,
+    "edit": 0.1847,
+    "bleu": 0.7689,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0433,
+    "len_ratio": 1.0172,
+    "wrong_symbols": 0.6667,
+    "wrong_structure_only": 0.14
+   },
+   "beam3": {
+    "em": 0.1967,
+    "edit": 0.1797,
+    "bleu": 0.777,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.05,
+    "len_ratio": 1.0004,
+    "wrong_symbols": 0.6633,
+    "wrong_structure_only": 0.14
+   },
+   "beam5": {
+    "em": 0.2033,
+    "edit": 0.1777,
+    "bleu": 0.7781,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.04,
+    "len_ratio": 0.9857,
+    "wrong_symbols": 0.6567,
+    "wrong_structure_only": 0.14
+   },
+   "beam5_pairs": {
+    "em": 0.2,
+    "edit": 0.1807,
+    "bleu": 0.7768,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0033,
+    "len_ratio": 0.9868,
+    "wrong_symbols": 0.6633,
+    "wrong_structure_only": 0.1367
+   },
+   "consensus": {
+    "em": 0.1933,
+    "edit": 0.17,
+    "bleu": 0.7805,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0333,
+    "len_ratio": 0.9756,
+    "wrong_symbols": 0.65,
+    "wrong_structure_only": 0.1567
+   }
+  }
+ },
+ "m_lr12_s1/knn.json": {
+  "val": {
+   "0.0": {
+    "em": 0.2975,
+    "edit": 0.0964,
+    "bleu": 0.878,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0387,
+    "len_ratio": 0.972,
+    "wrong_symbols": 0.535,
+    "wrong_structure_only": 0.1675
+   },
+   "0.1": {
+    "em": 0.3063,
+    "edit": 0.095,
+    "bleu": 0.8788,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0362,
+    "len_ratio": 0.9728,
+    "wrong_symbols": 0.5288,
+    "wrong_structure_only": 0.165
+   },
+   "0.25": {
+    "em": 0.3162,
+    "edit": 0.0939,
+    "bleu": 0.8807,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0362,
+    "len_ratio": 0.9735,
+    "wrong_symbols": 0.525,
+    "wrong_structure_only": 0.1588
+   },
+   "0.5": {
+    "em": 0.3225,
+    "edit": 0.0921,
+    "bleu": 0.8811,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.04,
+    "len_ratio": 0.9725,
+    "wrong_symbols": 0.505,
+    "wrong_structure_only": 0.1725
+   }
+  },
+  "ood_cpe": {
+   "0.0": {
+    "em": 0.0,
+    "edit": 0.4196,
+    "bleu": 0.4796,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.4167,
+    "len_ratio": 0.9338,
+    "wrong_symbols": 0.9867,
+    "wrong_structure_only": 0.0133
+   },
+   "0.1": {
+    "em": 0.0,
+    "edit": 0.4095,
+    "bleu": 0.4883,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.4067,
+    "len_ratio": 0.9176,
+    "wrong_symbols": 0.99,
+    "wrong_structure_only": 0.01
+   },
+   "0.25": {
+    "em": 0.0,
+    "edit": 0.403,
+    "bleu": 0.4924,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.3967,
+    "len_ratio": 0.9089,
+    "wrong_symbols": 0.99,
+    "wrong_structure_only": 0.01
+   },
+   "0.5": {
+    "em": 0.0,
+    "edit": 0.3878,
+    "bleu": 0.5055,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.3533,
+    "len_ratio": 0.8942,
+    "wrong_symbols": 0.9933,
+    "wrong_structure_only": 0.0067
+   }
+  },
+  "ood_sce": {
+   "0.0": {
+    "em": 0.1567,
+    "edit": 0.4548,
+    "bleu": 0.3018,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0367,
+    "len_ratio": 2.0039,
+    "wrong_symbols": 0.8067,
+    "wrong_structure_only": 0.0367
+   },
+   "0.1": {
+    "em": 0.1667,
+    "edit": 0.4434,
+    "bleu": 0.3355,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0167,
+    "len_ratio": 1.8019,
+    "wrong_symbols": 0.8,
+    "wrong_structure_only": 0.0333
+   },
+   "0.25": {
+    "em": 0.1667,
+    "edit": 0.4292,
+    "bleu": 0.3698,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.02,
+    "len_ratio": 1.6265,
+    "wrong_symbols": 0.7967,
+    "wrong_structure_only": 0.0367
+   },
+   "0.5": {
+    "em": 0.16,
+    "edit": 0.4271,
+    "bleu": 0.4518,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0233,
+    "len_ratio": 1.4218,
+    "wrong_symbols": 0.8033,
+    "wrong_structure_only": 0.0367
+   }
+  },
+  "ood_spe": {
+   "0.0": {
+    "em": 0.1667,
+    "edit": 0.1892,
+    "bleu": 0.7525,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0433,
+    "len_ratio": 0.9883,
+    "wrong_symbols": 0.7,
+    "wrong_structure_only": 0.1333
+   },
+   "0.1": {
+    "em": 0.17,
+    "edit": 0.1866,
+    "bleu": 0.7556,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0333,
+    "len_ratio": 0.9858,
+    "wrong_symbols": 0.6867,
+    "wrong_structure_only": 0.1433
+   },
+   "0.25": {
+    "em": 0.1733,
+    "edit": 0.1799,
+    "bleu": 0.7642,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0333,
+    "len_ratio": 0.9777,
+    "wrong_symbols": 0.6833,
+    "wrong_structure_only": 0.1433
+   },
+   "0.5": {
+    "em": 0.17,
+    "edit": 0.1761,
+    "bleu": 0.7675,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.03,
+    "len_ratio": 0.9599,
+    "wrong_symbols": 0.6733,
+    "wrong_structure_only": 0.1567
+   }
+  }
+ },
+ "m_lr6_s8x4_g18_s1/knn.json": {
+  "val": {
+   "0.0": {
+    "em": 0.3937,
+    "edit": 0.0767,
+    "bleu": 0.896,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0238,
+    "len_ratio": 0.9801,
+    "wrong_symbols": 0.435,
+    "wrong_structure_only": 0.1713
+   },
+   "0.1": {
+    "em": 0.4,
+    "edit": 0.0759,
+    "bleu": 0.8968,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.02,
+    "len_ratio": 0.9805,
+    "wrong_symbols": 0.4338,
+    "wrong_structure_only": 0.1663
+   },
+   "0.25": {
+    "em": 0.4075,
+    "edit": 0.0733,
+    "bleu": 0.899,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0213,
+    "len_ratio": 0.9755,
+    "wrong_symbols": 0.4225,
+    "wrong_structure_only": 0.17
+   },
+   "0.5": {
+    "em": 0.405,
+    "edit": 0.073,
+    "bleu": 0.9004,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0175,
+    "len_ratio": 0.9751,
+    "wrong_symbols": 0.425,
+    "wrong_structure_only": 0.17
+   }
+  },
+  "ood_cpe": {
+   "0.0": {
+    "em": 0.0033,
+    "edit": 0.4128,
+    "bleu": 0.4852,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.49,
+    "len_ratio": 0.958,
+    "wrong_symbols": 0.9867,
+    "wrong_structure_only": 0.01
+   },
+   "0.1": {
+    "em": 0.0033,
+    "edit": 0.4023,
+    "bleu": 0.4928,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.4433,
+    "len_ratio": 0.95,
+    "wrong_symbols": 0.9867,
+    "wrong_structure_only": 0.01
+   },
+   "0.25": {
+    "em": 0.0033,
+    "edit": 0.3905,
+    "bleu": 0.5072,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.45,
+    "len_ratio": 0.9302,
+    "wrong_symbols": 0.9867,
+    "wrong_structure_only": 0.01
+   },
+   "0.5": {
+    "em": 0.0033,
+    "edit": 0.3734,
+    "bleu": 0.5195,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.3967,
+    "len_ratio": 0.9101,
+    "wrong_symbols": 0.99,
+    "wrong_structure_only": 0.0067
+   }
+  },
+  "ood_sce": {
+   "0.0": {
+    "em": 0.17,
+    "edit": 0.4195,
+    "bleu": 0.2973,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0433,
+    "len_ratio": 2.0862,
+    "wrong_symbols": 0.77,
+    "wrong_structure_only": 0.06
+   },
+   "0.1": {
+    "em": 0.18,
+    "edit": 0.3988,
+    "bleu": 0.3548,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0333,
+    "len_ratio": 1.7461,
+    "wrong_symbols": 0.7467,
+    "wrong_structure_only": 0.0733
+   },
+   "0.25": {
+    "em": 0.1867,
+    "edit": 0.3958,
+    "bleu": 0.405,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0267,
+    "len_ratio": 1.6022,
+    "wrong_symbols": 0.7433,
+    "wrong_structure_only": 0.07
+   },
+   "0.5": {
+    "em": 0.1933,
+    "edit": 0.3902,
+    "bleu": 0.452,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.02,
+    "len_ratio": 1.4009,
+    "wrong_symbols": 0.7367,
+    "wrong_structure_only": 0.07
+   }
+  },
+  "ood_spe": {
+   "0.0": {
+    "em": 0.1933,
+    "edit": 0.1847,
+    "bleu": 0.7689,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0433,
+    "len_ratio": 1.0172,
+    "wrong_symbols": 0.6667,
+    "wrong_structure_only": 0.14
+   },
+   "0.1": {
+    "em": 0.19,
+    "edit": 0.1823,
+    "bleu": 0.7731,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0433,
+    "len_ratio": 1.0083,
+    "wrong_symbols": 0.66,
+    "wrong_structure_only": 0.15
+   },
+   "0.25": {
+    "em": 0.19,
+    "edit": 0.1713,
+    "bleu": 0.7842,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.0433,
+    "len_ratio": 0.9924,
+    "wrong_symbols": 0.65,
+    "wrong_structure_only": 0.16
+   },
+   "0.5": {
+    "em": 0.1833,
+    "edit": 0.1642,
+    "bleu": 0.7919,
+    "runaway": 0.0,
+    "unbalanced_braces": 0.04,
+    "len_ratio": 0.9724,
+    "wrong_symbols": 0.6533,
+    "wrong_structure_only": 0.1633
+   }
+  }
+ },
+ "cur_c2fov_from_fovea_s1/fovea_diag.json": {
+  "val_ce_intact": 0.5707605147155645,
+  "val_ce_glimpses_zeroed": 0.5779236071365224,
+  "fixations_rightward_share": 0.659795956074044,
+  "zoom_mean": 0.9296711552952066,
+  "zoom_p10_p90": [
+   0.5065230250358581,
+   1.699370622634888
+  ],
+  "steps": 2623
+ },
+ "m_fovea_s1/fovea_diag.json": {
+  "val_ce_intact": 0.4301172951230442,
+  "val_ce_glimpses_zeroed": 0.4383848765167548,
+  "fixations_rightward_share": 0.6511622359951049,
+  "zoom_mean": 0.963496193368243,
+  "zoom_p10_p90": [
+   0.52764812707901,
+   1.6649621963500978
+  ],
+  "steps": 2658
+ },
+ "m_foveac2_s1/fovea_diag.json": {
+  "val_ce_intact": 1.1090672731640445,
+  "val_ce_glimpses_zeroed": 1.1199005777654452,
+  "fixations_rightward_share": 0.5430753798905275,
+  "zoom_mean": 1.0360982206544986,
+  "zoom_p10_p90": [
+   0.5247416973114014,
+   1.8536462306976318
+  ],
+  "steps": 3855
+ }
+}

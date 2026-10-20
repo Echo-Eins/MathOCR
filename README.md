@@ -51,6 +51,12 @@ scripts/run_seed.sh 1
 | `third_party/latex_normalizer` | нормализатор im2markup/KaTeX из UniMERNet (лицензии внутри) |
 | `tests/` | тесты, включая побитовую воспроизводимость обучения |
 
+## Состояние работы
+
+Что сделано, результаты всех прогонов и проб, как развернуть и с чего
+продолжать — [`docs/HANDOFF.md`](docs/HANDOFF.md); отложенные идеи —
+[`tasks/todo.md`](tasks/todo.md).
+
 ## Результаты
 
 Заполняются по мере прогонов (`results/`).
