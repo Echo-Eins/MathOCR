@@ -50,6 +50,7 @@ class ModelConfig:
     # Ring deformable reading: the top ``deform_layers`` decoder layers sample the CNN's own fine
     # feature maps (strides 4 and 8) at ring points around their cross-attention focus.
     deform_layers: int = 0
+    bidir: bool = False  # BTTR-style: a learned direction embedding; trained on L2R and reversed (R2L) targets
     # Encoder output stride (vertical x horizontal pixels per memory cell): 16x8 (default), 8x8, 8x4.
     enc_stride: str = "16x8"
     rings: bool = False  # ring branches (depthwise dilations 1, 2, 4, 8) after CNN stages 2-4
@@ -881,13 +882,14 @@ class Im2Latex(nn.Module):
                                            for _ in range(cfg.dec_layers - 1))
                              if cfg.ring_bias or cfg.coverage else None)
             self.depth_embed = nn.Embedding(self.MAX_DEPTH + 1, d) if cfg.depth_pos else None
+            self.dir_embed = nn.Embedding(2, d) if cfg.bidir else None
             self.fovea = (RingFovea(d, cfg.fovea_levels, cfg.fovea_size, cfg.fovea_channels, cfg.fovea_base)
                           if cfg.fovea else None)
             self.fovea_read = (nn.ModuleList(GlimpseRead(d, cfg.n_heads) for _ in range(cfg.fovea_layer, cfg.dec_layers))
                                if cfg.fovea else None)
         self._init_weights()
 
-    LATE = ("count.", "count_proj.", "depth_embed.", "fovea.", "fovea_read.", "feedback.", "deform.")  # optional parts, initialized after everything else
+    LATE = ("count.", "count_proj.", "depth_embed.", "fovea.", "fovea_read.", "feedback.", "deform.", "dir_embed.")  # optional parts, initialized after everything else
 
     def _init_weights(self) -> None:
         for name, p in self.named_parameters():
@@ -939,12 +941,17 @@ class Im2Latex(nn.Module):
     def _memory_kv(self, memory: Tensor) -> list[tuple[Tensor, Tensor]]:
         return [layer.cross_attn.project_kv(memory) for layer in self.decoder]
 
-    def _embed(self, tokens: Tensor, offset: int, depth: Tensor | None = None) -> Tensor:
+    def _embed(self, tokens: Tensor, offset: int, depth: Tensor | None = None,
+               direction: Tensor | None = None) -> Tensor:
         n = tokens.shape[1]
         x = self.embed(tokens) * math.sqrt(self.cfg.d_model)
         x = x + self.tok_pos[offset : offset + n].to(x.dtype)
         if self.depth_embed is not None:
             x = x + self.depth_embed(depth.clamp(0, self.MAX_DEPTH)).to(x.dtype)
+        if self.dir_embed is not None:  # 0 = left to right (canonical), 1 = right to left
+            if direction is None:
+                direction = torch.zeros(tokens.shape[0], dtype=torch.long, device=tokens.device)
+            x = x + self.dir_embed(direction)[:, None].to(x.dtype)
         return x
 
     def _depth_step(self, tokens: Tensor) -> Tensor:
@@ -1015,7 +1022,7 @@ class Im2Latex(nn.Module):
         return x
 
     # -- training
-    def forward(self, images: Tensor, tokens_in: Tensor, return_aux: bool = False):
+    def forward(self, images: Tensor, tokens_in: Tensor, return_aux: bool = False, direction: Tensor | None = None):
         """Teacher-forced logits (B, T, V) for ``tokens_in`` = BOS + target[:-1].
 
         With ``return_aux`` also returns a dict of auxiliary outputs:
@@ -1028,7 +1035,7 @@ class Im2Latex(nn.Module):
         mem_kv = self._memory_kv(memory)
         log_count = self._log_count(memory) if self.count is not None else None
         depth = self._depth_step(tokens_in).cumsum(dim=1) if self.depth_embed is not None else None
-        x = self.dec_drop(self._embed(tokens_in, 0, depth) + self._count_feature(log_count))
+        x = self.dec_drop(self._embed(tokens_in, 0, depth, direction) + self._count_feature(log_count))
         pyramid = image_pyramid(images, self.cfg.fovea_levels + 2) if self.fovea is not None else None
         x = self._decode(x, images, mem_kv, None, pyramid, valid=tokens_in != 0, feats=feats)  # 0 = <pad>
         logits = self._logits(x)
@@ -1078,6 +1085,100 @@ class Im2Latex(nn.Module):
             if bool(done.all()):
                 break
         return torch.cat(out, dim=1)
+
+    @torch.no_grad()
+    def beam_generate(self, images: Tensor, bos_id: int, eos_id: int, beam: int = 5, alpha: float = 0.6,
+                      max_len: int | None = None, pairs: list[tuple[list[int], list[int]]] | None = None,
+                      nbest: bool = False):
+        """Deterministic beam search -> per image the best hypothesis (token ids, no BOS/EOS).
+
+        Hypotheses are ranked by ``sum log p / ((5 + n) / 6) ** alpha`` (GNMT length
+        penalty).  ``pairs`` lists (openers, closers) token-id groups -- e.g. ``{``/``}``,
+        ``\\left*``/``\\right*``, ``\\begin{*}``/``\\end{*}`` -- whose balance is enforced: a
+        closer is impossible at depth 0 and EOS is impossible while a group is open.
+        Top-k runs on the CPU, so the choice and its tie-breaking are deterministic.
+        """
+
+        b, k = images.shape[0], beam
+        max_len = min(max_len or self.cfg.max_len, self.cfg.max_len) - 1
+        rep = lambda t: t.repeat_interleave(k, dim=0)  # noqa: E731
+        feats: list | None = [] if self.deform is not None else None
+        memory = self.encode(images, feats)
+        feed = self._count_feature(self._log_count(memory)) if self.count_proj is not None else 0
+        if torch.is_tensor(feed):
+            feed = rep(feed)
+        mem_kv = [(rep(kk), rep(vv)) for kk, vv in self._memory_kv(memory)]
+        feats = [rep(f) for f in feats] if feats is not None else None
+        pyramid = [rep(p) for p in image_pyramid(images, self.cfg.fovea_levels + 2)] if self.fovea is not None else None
+        imgs = rep(images)
+        dev = images.device
+        caches: list[dict] = [{} for _ in self.decoder]
+        token = torch.full((b * k, 1), bos_id, dtype=torch.long, device=dev)
+        depth = torch.zeros(b * k, 1, dtype=torch.long, device=dev)
+        level = torch.zeros(b * k, len(pairs or []), dtype=torch.long)  # open groups per pair type (CPU)
+        scores = torch.full((b, k), float("-inf"))
+        scores[:, 0] = 0.0
+        hist = [[] for _ in range(b * k)]
+        finished: list[list[tuple[float, list[int]]]] = [[] for _ in range(b)]
+        alive = [True] * b
+        lp = lambda n: ((5 + n) / 6) ** alpha  # noqa: E731
+        for step in range(max_len):
+            depth = depth + self._depth_step(token)
+            x = self._embed(token, step, depth) + feed
+            x = self._decode(x, imgs, mem_kv, caches, pyramid, feats=feats)
+            logp = torch.log_softmax(self._logits(x)[:, -1].float(), dim=-1).cpu()
+            for j, (opens, closes) in enumerate(pairs or []):
+                shut = level[:, j] == 0
+                logp[shut[:, None] & torch.isin(torch.arange(logp.shape[1]), torch.tensor(closes))[None]] = float("-inf")
+                logp[~shut, eos_id] = float("-inf")
+            cand = (scores.view(-1, 1) + logp).view(b, -1)
+            top_v, top_i = cand.topk(2 * k, dim=1)
+            src = torch.zeros(b * k, dtype=torch.long)
+            nxt = torch.full((b * k,), eos_id, dtype=torch.long)
+            new_scores = torch.full((b, k), float("-inf"))
+            for i in range(b):
+                if not alive[i]:
+                    src[i * k : (i + 1) * k] = i * k
+                    continue
+                filled = 0
+                for v, idx in zip(top_v[i].tolist(), top_i[i].tolist()):
+                    if v == float("-inf"):
+                        break
+                    bi, tok = divmod(idx, logp.shape[1])
+                    if tok == eos_id:
+                        finished[i].append((v / lp(step + 1), hist[i * k + bi]))
+                        continue
+                    src[i * k + filled], nxt[i * k + filled] = i * k + bi, tok
+                    new_scores[i, filled] = v
+                    filled += 1
+                    if filled == k:
+                        break
+                best_alive = new_scores[i].max().item()
+                best_done = max((f[0] for f in finished[i]), default=float("-inf"))
+                # Alive scores only fall; at length max_len they cannot beat a finished one.
+                if filled == 0 or (len(finished[i]) >= k and best_alive / lp(max_len) <= best_done):
+                    alive[i] = False
+            if not any(alive):
+                break
+            hist = [hist[s] + [t] for s, t in zip(src.tolist(), nxt.tolist())]
+            scores = new_scores
+            idx_dev = src.to(dev)
+            for cache in caches:
+                for key in cache:
+                    cache[key] = cache[key].index_select(0, idx_dev)
+            depth = depth.index_select(0, idx_dev)
+            level = level.index_select(0, src)
+            for j, (opens, closes) in enumerate(pairs or []):
+                level[:, j] += torch.isin(nxt, torch.tensor(opens)).long() - torch.isin(nxt, torch.tensor(closes)).long()
+            token = nxt.to(dev).view(-1, 1)
+        out = []
+        for i in range(b):
+            if not finished[i]:  # nothing ended within max_len: the alive hypotheses
+                finished[i] = [(float(scores[i, j]) / lp(max_len), hist[i * k + j]) for j in range(k)
+                               if scores[i, j] > float("-inf")]
+            ranked = sorted(finished[i], key=lambda f: -f[0])  # stable: ties keep discovery order
+            out.append(ranked if nbest else ranked[0][1])
+        return out
 
 
 def count_parameters(model: nn.Module) -> int:

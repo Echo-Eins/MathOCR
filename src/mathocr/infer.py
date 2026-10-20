@@ -26,7 +26,7 @@ def load_checkpoint(path: Path, device: torch.device) -> tuple[Im2Latex, Vocab, 
     mcfg = ckpt["model_config"]
     model = Im2Latex(ModelConfig(**{**mcfg, "cnn_channels": tuple(mcfg["cnn_channels"]),
                                      "cnn_blocks": tuple(mcfg["cnn_blocks"])}))
-    model.load_state_dict(ckpt["model"])
+    model.load_state_dict(ckpt.get("ema", ckpt["model"]))  # an EMA run deploys its averaged weights
     model.to(device).eval()
     return model, Vocab(ckpt["vocab"]), ImageConfig(**ckpt["image_config"]), ckpt
 

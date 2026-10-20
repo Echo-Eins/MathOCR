@@ -1,0 +1,1 @@
+killed by the memory watchdog at 2026-10-11 07:14 (11 GB available) at step 9700/9721 of epoch 0, during end-of-epoch validation; no checkpoint; rerun as runs/final_s2

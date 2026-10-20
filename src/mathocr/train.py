@@ -17,6 +17,7 @@ states are restored).
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import math
 import os
@@ -27,6 +28,7 @@ from dataclasses import asdict
 from functools import partial
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import yaml
@@ -78,26 +80,85 @@ def countable_mask(vocab: Vocab) -> torch.Tensor:
     return torch.tensor([i >= 4 and t not in STRUCTURAL for i, t in enumerate(vocab.itos)])
 
 
+def reverse_targets(tokens: torch.Tensor, direction: torch.Tensor, pad_id: int) -> torch.Tensor:
+    """Rows with ``direction == 1``: tokens between BOS and EOS in reverse order (padding kept)."""
+
+    pos = torch.arange(tokens.shape[1], device=tokens.device)[None]
+    n = (tokens != pad_id).sum(dim=1, keepdim=True)  # BOS + content + EOS
+    inner = (pos >= 1) & (pos <= n - 2) & (direction[:, None] == 1)
+    return torch.gather(tokens, 1, torch.where(inner, n - 1 - pos, pos))
+
+
 def _loss(model: Im2Latex, batch: dict, device: torch.device, vocab: Vocab, smoothing: float,
           amp: bool, count_weight: float = 0.0, countable: torch.Tensor | None = None,
-          token_dropout: float = 0.0) -> tuple[torch.Tensor, int, torch.Tensor, dict]:
+          token_dropout: float = 0.0, both_directions: bool = True,
+          soft: tuple | None = None) -> tuple[torch.Tensor, int, torch.Tensor, dict]:
     images = batch["images"].to(device, non_blocking=True)
     tokens = batch["tokens"].to(device, non_blocking=True)
     tokens_in = tokens[:, :-1]
+    if token_dropout > 0 and model.cfg.bidir:
+        raise ValueError("token_dropout and bidir are not combined")
     if token_dropout > 0:
         # Hide part of the teacher-forced prefix (<unk>), so the next token has
         # to be read off the image rather than guessed from the LaTeX so far.
         # Drawn from the seeded global generator: reproducible.
         hide = (torch.rand(tokens_in.shape, device=device) < token_dropout) & (tokens_in > vocab.unk_id)
         tokens_in = tokens_in.masked_fill(hide, vocab.unk_id)
+    direction = None
+    if model.cfg.bidir and both_directions:
+        # BTTR: half of the samples (seeded draw) read right to left -- content tokens
+        # reversed between BOS and EOS -- with the direction as an input embedding.
+        direction = (torch.rand(tokens.shape[0], device=device) < 0.5).long()
+        tokens = reverse_targets(tokens, direction, vocab.pad_id)
+        tokens_in = tokens[:, :-1]
     want_aux = count_weight > 0
     with torch.autocast("cuda", dtype=torch.bfloat16, enabled=amp and device.type == "cuda"):
-        out = model(images, tokens_in, return_aux=want_aux)
+        out = model(images, tokens_in, return_aux=want_aux, direction=direction)
     logits, aux = out if want_aux else (out, {})
     target = tokens[:, 1:]
-    loss = F.cross_entropy(logits.float().reshape(-1, logits.shape[-1]), target.reshape(-1),
-                           ignore_index=vocab.pad_id, label_smoothing=smoothing)
     parts = {}
+    if soft is not None and soft[2] == "alt":
+        # Uniform smoothing stays; an extra term teaches the *alternative* continuations of
+        # the neighbours (gold token removed, renormalized; rows without alternatives add 0).
+        loss = F.cross_entropy(logits.float().reshape(-1, logits.shape[-1]), target.reshape(-1),
+                               ignore_index=vocab.pad_id, label_smoothing=smoothing)
+        (s_ids, s_w, s_off), beta, _ = soft
+        k = s_ids.shape[1]
+        ids = torch.zeros(target.shape[0], target.shape[1], k, dtype=torch.long)
+        wts = torch.zeros(target.shape[0], target.shape[1], k)
+        for r, i in enumerate(batch["index"].tolist()):
+            lo, hi = int(s_off[i]), int(s_off[i + 1])
+            ids[r, : hi - lo] = torch.from_numpy(s_ids[lo:hi].astype(np.int64))
+            wts[r, : hi - lo] = torch.from_numpy(s_w[lo:hi])
+        ids, wts = ids.to(device), wts.to(device)
+        wts = wts * (ids != target.unsqueeze(-1)).float()
+        wts = wts / wts.sum(-1, keepdim=True).clamp(min=1e-8)
+        logp = torch.log_softmax(logits.float(), dim=-1)
+        real = (target != vocab.pad_id).float() * (wts.sum(-1) > 0).float()
+        alt_ce = -(logp.gather(-1, ids) * wts).sum(-1).mul(real).sum() / (target != vocab.pad_id).sum().clamp(min=1)
+        parts["alt_ce"] = alt_ce.detach()
+        loss = loss + beta * alt_ce
+    elif soft is None:
+        loss = F.cross_entropy(logits.float().reshape(-1, logits.shape[-1]), target.reshape(-1),
+                               ignore_index=vocab.pad_id, label_smoothing=smoothing)
+    else:
+        # Distillation: the smoothing mass goes to a precomputed per-position
+        # distribution (teacher top-K or the training-set neighbours' continuations).
+        (s_ids, s_w, s_off), eps, _ = soft
+        rows = batch["index"].tolist()
+        k = s_ids.shape[1]
+        ids = torch.zeros(target.shape[0], target.shape[1], k, dtype=torch.long)
+        wts = torch.zeros(target.shape[0], target.shape[1], k)
+        for r, i in enumerate(rows):
+            lo, hi = int(s_off[i]), int(s_off[i + 1])
+            ids[r, : hi - lo] = torch.from_numpy(s_ids[lo:hi].astype(np.int64))
+            wts[r, : hi - lo] = torch.from_numpy(s_w[lo:hi])
+        logp = torch.log_softmax(logits.float(), dim=-1)
+        real = (target != vocab.pad_id).float()
+        hard = -(logp.gather(-1, target.unsqueeze(-1)).squeeze(-1) * real).sum() / real.sum()
+        soft_ce = -(logp.gather(-1, ids.to(device)) * wts.to(device)).sum(-1).mul(real).sum() / real.sum()
+        loss = (1 - eps) * hard + eps * soft_ce
+        parts["soft_ce"] = soft_ce.detach()
     if want_aux:
         # Poisson NLL of the true symbol counts, per image normalized by its
         # token count so the term has the scale of the per-token CE.
@@ -117,7 +178,7 @@ def validate(model: Im2Latex, store: CropStore, sampler: ShapeBatchSampler, item
     total, count, first_ok, samples = 0.0, 0, 0, 0
     for keys in sampler:
         batch = collate([items[k] for k in keys], vocab.pad_id)
-        loss, n, logits, _ = _loss(model, batch, device, vocab, 0.0, tcfg["amp"])
+        loss, n, logits, _ = _loss(model, batch, device, vocab, 0.0, tcfg["amp"], both_directions=False)  # L2R
         total += float(loss) * n
         count += n
         # The first token has no prefix to lean on: it is read off the image
@@ -148,6 +209,10 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
     mcfg = ModelConfig(vocab_size=len(vocab), open_id=vocab.stoi.get("{", -1), close_id=vocab.stoi.get("}", -1),
                        **{k: tuple(v) if isinstance(v, list) else v for k, v in cfg["model"].items()})
     model = Im2Latex(mcfg).to(device)
+    ema_decay = float(tcfg.get("ema_decay", 0.0))
+    # EMA of the weights (deployed and validated when enabled); updated after every
+    # step with a warm-up decay min(d, (1 + t) / (10 + t)); buffers are copied.
+    ema = copy.deepcopy(model).eval().requires_grad_(False) if ema_decay > 0 else None
     if tcfg.get("init_from"):
         # Curriculum / fine-tuning: start from the weights of another run (same architecture);
         # optimizer, schedule and data order start fresh from this run's seed.
@@ -168,6 +233,12 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
     total_steps = steps_per_epoch * tcfg["epochs"]
     opt = build_optimizer(model, tcfg)
     count_weight = float(tcfg.get("count_loss", 0.0))
+    soft = None
+    if tcfg.get("soft_targets"):
+        z = np.load(tcfg["soft_targets"])
+        if len(z["offsets"]) != len(train_store) + 1:
+            raise ValueError("soft targets do not match the training split")
+        soft = ((z["ids"], z["w"], z["offsets"]), float(tcfg.get("soft_weight", 0.1)), tcfg.get("soft_mode", "replace"))
     countable = countable_mask(vocab).to(device) if count_weight > 0 else None
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, partial(_lr_lambda, warmup=tcfg["warmup_steps"], total=total_steps, min_ratio=tcfg["min_lr_ratio"]))
@@ -178,6 +249,8 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
     if resume and (ckpt_dir / "last.pt").exists():
         state = torch.load(ckpt_dir / "last.pt", map_location="cpu", weights_only=False)
         model.load_state_dict(state["model"])
+        if ema is not None:
+            ema.load_state_dict(state["ema"])
         opt.load_state_dict(state["optimizer"])
         sched.load_state_dict(state["scheduler"])
         start_epoch, step, best = state["epoch"] + 1, state["step"], state["best"]
@@ -211,11 +284,18 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
                 if i >= steps_per_epoch:
                     break
                 loss, n, _, parts = _loss(model, batch, device, vocab, tcfg["label_smoothing"], tcfg["amp"],
-                                          count_weight, countable, float(tcfg.get("token_dropout", 0.0)))
+                                          count_weight, countable, float(tcfg.get("token_dropout", 0.0)), soft=soft)
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), tcfg["grad_clip"])
                 opt.step()
+                if ema is not None:
+                    with torch.no_grad():
+                        d = min(ema_decay, (1 + step) / (10 + step))
+                        for pe, pm in zip(ema.parameters(), model.parameters()):
+                            pe.mul_(d).add_(pm.detach(), alpha=1 - d)
+                        for be, bm in zip(ema.buffers(), model.buffers()):
+                            be.copy_(bm)
                 sched.step()
                 step += 1
                 seen_tokens += n
@@ -237,19 +317,21 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
                     for k in ("loss", "grad_norm", "clip_frac", "lr", "tokens_per_s", *parts):
                         writer.add_scalar(f"train/{k}", rec[k], step)
                     print(json.dumps(rec), flush=True)
-            val = validate(model, val_store, val_sampler, val_items, vocab, device, tcfg, icfg)
+            deployed = ema if ema is not None else model
+            val = validate(deployed, val_store, val_sampler, val_items, vocab, device, tcfg, icfg)
             rec = {"epoch": epoch, "step": step, "epoch_seconds": time.time() - t0, **val}
             improved = (val["val_exact_match"], -val["val_edit_distance"]) > (best["val_exact_match"], -best["val_edit_distance"])
             if improved:
                 best = {"val_exact_match": val["val_exact_match"], "val_edit_distance": val["val_edit_distance"], "epoch": epoch}
-                torch.save({**common, "model": model.state_dict(), "epoch": epoch, "val": val}, ckpt_dir / "best.pt")
+                torch.save({**common, "model": deployed.state_dict(), "epoch": epoch, "val": val}, ckpt_dir / "best.pt")
             rec["best_epoch"] = best["epoch"]
             log.write(json.dumps(rec) + "\n")
             log.flush()
             for k, v in val.items():
                 writer.add_scalar(f"val/{k[4:]}", v, step)
             print(json.dumps(rec), flush=True)
-            torch.save({**common, "model": model.state_dict(), "optimizer": opt.state_dict(),
+            torch.save({**common, "model": model.state_dict(), **({"ema": ema.state_dict()} if ema is not None else {}),
+                        "optimizer": opt.state_dict(),
                         "scheduler": sched.state_dict(), "epoch": epoch, "step": step, "best": best,
                         "rng_cpu": torch.get_rng_state(),
                         "rng_cuda": torch.cuda.get_rng_state() if device.type == "cuda" else None},

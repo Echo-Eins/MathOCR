@@ -1,0 +1,6 @@
+Final protocol seed 3 (commit 4f05221, configs/final.yaml) -- INCOMPLETE.
+Trained through epoch 2 (val EM 0.4975); checkpoints/last.pt (on /mnt/SSD) holds the end of epoch 2.
+Stopped twice by the MathOCR memory watchdog when DRREM jobs grew to ~65 GB of the shared 121 GB:
+2026-10-12 03:14 (11 GB available) and 04:51 (4 GB available). The partial epochs were removed from
+log.jsonl (kept in log_killed_partial_epoch.jsonl). Resume: /mnt/SSD/MathOCR/final/lane.sh 3
+(train --resume continues bitwise from the epoch boundary).

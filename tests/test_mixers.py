@@ -87,6 +87,8 @@ def _state(run):
                                        {"model": {"count_head": True}, "train": {"count_loss": 0.5}},
                                        {"train": {"optimizer": "muon"}},
                                        {"train": {"token_dropout": 0.2}},
+                                       {"train": {"ema_decay": 0.99}},
+                                       {"model": {"bidir": True}},
                                        {"model": {"fovea": True, "fovea_layer": 1, "fovea_levels": 3}},
                                        {"model": {"rings": True, "inject": True, "depth_pos": True}},
                                        {"model": {"ring_bias": True, "coverage": True}},
@@ -144,3 +146,28 @@ def test_stacking_is_deterministic_and_shape_consistent(tiny_data):
     words = vocab.decode(target.tolist())
     assert words[:4] == ["\\begin{array}", "{", "l", "}"] and words[-1] == "\\end{array}"
     assert words.count("\\\\") == len(stacked[3]) and len(target) <= 64
+
+
+@cuda
+@pytest.mark.parametrize("mode", ["self", "knn"])
+def test_soft_target_distillation_is_reproducible(tiny_config, tiny_data, tmp_path, mode):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import numpy as np
+
+    root = Path(__file__).resolve().parents[1]
+    train(copy.deepcopy(tiny_config), 3, tmp_path / "teacher", resume=False)
+    out = tmp_path / f"soft_{mode}.npz"
+    subprocess.run([sys.executable, str(root / "scripts" / "soft_targets.py"), str(tmp_path / "teacher" / "checkpoints" / "last.pt"),
+                    "--mode", mode, "--data", str(tiny_data), "--k", "4", "--out", str(out)], check=True,
+                   env={**__import__("os").environ, "PYTHONPATH": str(root / "src")})
+    z = np.load(out)
+    assert np.allclose(z["w"].sum(1)[z["w"].sum(1) > 0], 1.0, atol=1e-4)
+    cfg = copy.deepcopy(tiny_config)
+    cfg["train"].update(soft_targets=str(out), soft_weight=0.1, soft_mode="alt" if mode == "knn" else "replace")
+    train(copy.deepcopy(cfg), 7, tmp_path / "a", resume=False)
+    train(copy.deepcopy(cfg), 7, tmp_path / "b", resume=False)
+    a, b = _state(tmp_path / "a"), _state(tmp_path / "b")
+    assert all(torch.equal(a[k], b[k]) for k in a)

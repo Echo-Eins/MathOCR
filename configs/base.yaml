@@ -42,6 +42,7 @@ model:
   feedback_rings: 6
   deform_layers: 0          # top decoder layers that also read fine CNN maps at ring points around their focus
   enc_stride: 16x8          # encoder output stride: 16x8 | 8x8 | 8x4 (more memory cells per glyph)
+  bidir: false              # BTTR: also trained on reversed targets (direction embedding); R2L rescoring
   rings: false             # ring branches (dilations 1-8) after CNN stages 2-4
   inject: false            # raw-image pyramid injected after every CNN stage
   depth_pos: false         # brace depth as an extra decoder position
@@ -79,6 +80,10 @@ train:
   token_dropout: 0.0       # share of teacher-forced input tokens replaced by <unk>
   init_from: null          # checkpoint whose model weights initialize this run (curriculum)
   feedback_lr_mult: 1.0    # LR multiplier of the attention-feedback tables (ring bias, coverage)
+  ema_decay: 0.0           # > 0: EMA of the weights, validated and deployed (best.pt, inference)
+  soft_targets: null       # .npz from scripts/soft_targets.py: smoothing mass goes to these per-position targets
+  soft_weight: 0.1
+  soft_mode: replace         # replace: smoothing mass -> soft targets; alt: + soft_weight x CE on neighbours' alternatives
   grad_clip: 1.0
   amp: true                # bf16 autocast for training; evaluation is fp32
   pixel_budget: 1000000    # images per batch = min(max_batch, budget // (H*W))

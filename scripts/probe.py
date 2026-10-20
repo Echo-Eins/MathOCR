@@ -141,7 +141,7 @@ def run_probe(name: str, seed: int, epochs: int, overrides: list[str]) -> dict:
     build_subsets(src)
     cfg = load_config(ROOT / "configs" / "base.yaml", [
         f"data.out_dir={DATA}", f"train.epochs={epochs}", "train.warmup_steps=300", "train.val_decode_samples=800",
-        "train.log_every=50", "train.workers=3", *overrides])
+        "train.log_every=50", "train.workers=2", *overrides])
     run = PROBE_ROOT / "runs" / name
     shutil.rmtree(run, ignore_errors=True)
     run.mkdir(parents=True)
@@ -331,6 +331,49 @@ def main() -> None:
                 print(json.dumps(summary_row(r)))
         return
     os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+    if args.name.startswith("soft_"):  # queue job: soft_<self|knn>_<run> -> runs/<run>/soft_<mode>.npz
+        import subprocess
+
+        _, mode, run = args.name.split("_", 2)  # mode: self | knn | knn<tau x 100>, e.g. knn20 = tau 0.20
+        target = PROBE_ROOT / "runs" / run
+        extra = ["--tau", str(int(mode[3:]) / 100)] if mode.startswith("knn") and len(mode) > 3 else []
+        subprocess.run([sys.executable, str(ROOT / "scripts" / "soft_targets.py"), str(target / "checkpoints" / "last.pt"),
+                        "--mode", mode[:3] if mode.startswith("knn") else mode, "--data", str(DATA),
+                        "--out", str(target / f"soft_{mode}.npz"), *extra], check=True)
+        marker = PROBE_ROOT / "runs" / args.name
+        marker.mkdir(parents=True, exist_ok=True)
+        (marker / "probe.json").write_text(json.dumps({"reeval_of": args.name}) + "\n")
+        return
+    if args.name.startswith(("knnp128_", "fknn_")):  # PCA-compressed kNN: on a probe, or on a final run (full train)
+        import subprocess
+
+        kind, _, rest = args.name.partition("_")
+        common = ["--pca", "128", "--lams", "0", "0.25", "0.5"]
+        if kind == "knnp128":
+            target = PROBE_ROOT / "runs" / rest
+            cmd = [str(target / "checkpoints" / "last.pt"), "--data", str(DATA), "--out", str(target / "knn_p128.json")]
+        else:
+            run = ROOT / "runs" / rest
+            cmd = [str(run / "checkpoints" / "best.pt"), "--data", str(ROOT / "data" / "processed"),
+                   "--splits", "test_im2latex", "test_oleehyo", "ood_cpe", "ood_sce", "ood_spe",
+                   "--limit-eval", "2000", "--out", str(run / "eval" / "knn_p128.json")]
+        subprocess.run([sys.executable, str(ROOT / "scripts" / "knn_decode.py"), *cmd, *common], check=True)
+        marker = PROBE_ROOT / "runs" / args.name
+        marker.mkdir(parents=True, exist_ok=True)
+        (marker / "probe.json").write_text(json.dumps({"reeval_of": args.name}) + "\n")
+        return
+    if args.name.startswith(("decode_", "knn_")):  # queue jobs: decoding study / memory-augmented decoding
+        import subprocess
+
+        kind, _, rest = args.name.partition("_")
+        target = PROBE_ROOT / "runs" / rest
+        script = "decode_study.py" if kind == "decode" else "knn_decode.py"
+        subprocess.run([sys.executable, str(ROOT / "scripts" / script), str(target / "checkpoints" / "last.pt"),
+                        "--data", str(DATA), "--out", str(target / f"{kind}.json")], check=True)
+        marker = PROBE_ROOT / "runs" / args.name
+        marker.mkdir(parents=True, exist_ok=True)
+        (marker / "probe.json").write_text(json.dumps({"reeval_of": args.name}) + "\n")
+        return
     if args.name.startswith("trace_"):  # queue job: fovea diagnostics of a finished probe
         fovea_diagnostics(args.name[len("trace_"):])
         marker = PROBE_ROOT / "runs" / args.name
