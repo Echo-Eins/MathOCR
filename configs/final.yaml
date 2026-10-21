@@ -70,7 +70,7 @@ augment:
   p_stack: 0.0              # multi-line composition of 2..stack_max formulas (dataset.py)
   stack_max: 3
   stack_gap: 0.6
-  stack_style: l            # l: left-aligned lines, array{l} label | rl: aligned at the relation, array{r l} label
+  stack_style: l            # l: left-aligned lines, array{l} | rl: aligned at the relation, array{r l} | rows: partners are whole array{r l} blocks, rows merged
 
 train:
   epochs: 5

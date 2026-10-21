@@ -42,7 +42,9 @@ class AugmentConfig:
     # \end{array}; "rl": the normalizer's spelling of aligned equations, \begin{array} { r l }
     # { lhs } & { { } = rhs } \\ & { { } f2 } ... \end{array} (split at the first top-level
     # relation; a line without one sits in the right column), with the lines aligned at the
-    # relation's estimated column -- the layout 93% of multi-line training labels have.
+    # relation's estimated column -- the layout 93% of multi-line training labels have; "rows":
+    # like "rl", but the partners are whole \begin{array} { r l } blocks (genuine aligned
+    # equations, 9% of train) whose rows are merged into one array -- long labels with real rows.
     p_stack: float = 0.0
     stack_max: int = 3
     stack_gap: float = 0.6
@@ -117,19 +119,55 @@ def relation_cut(tokens: Sequence[str]) -> int | None:
     return None
 
 
+RL_HEAD = ("\\begin{array}", "{", "r", "l", "}")
+
+
+def rl_rows(tokens: Sequence[str]) -> list[tuple[int, int]] | None:
+    """Row spans ``[start, end)`` of a whole ``\\begin{array} { r l } ... \\end{array}`` label (rows split at
+    the top-level ``\\\\``, an empty trailing row dropped), or None when the label is not such a block."""
+
+    if len(tokens) < 7 or tuple(tokens[:5]) != RL_HEAD or tokens[-1] != "\\end{array}":
+        return None
+    rows, start, depth = [], 5, 0
+    for i in range(5, len(tokens) - 1):
+        t = tokens[i]
+        if t == "{" or t.startswith("\\begin{"):
+            depth += 1
+        elif t == "}" or t.startswith("\\end{"):
+            depth -= 1
+        elif t == "\\\\" and depth == 0:
+            rows.append((start, i))
+            start = i + 1
+    if start < len(tokens) - 1:
+        rows.append((start, len(tokens) - 1))
+    return [r for r in rows if r[1] > r[0]] or None
+
+
+def _cut_fraction(tokens: Sequence[str]) -> float | None:
+    """Estimated horizontal position (0..1) of the alignment column: the relation of a single formula, or
+    the ``&`` of the first row of an ``r l`` block."""
+
+    rows = rl_rows(tokens)
+    if rows:
+        s, e = rows[0]
+        row = tokens[s:e]
+        return (row.index("&") if "&" in row else 0) / max(1, len(row))
+    cut = relation_cut(tokens)
+    return None if cut is None else cut / len(tokens)
+
+
 def _part_layout(store: CropStore, idx: Sequence[int], cfg: ImageConfig, aug: AugmentConfig) -> list[tuple[int, int, int]]:
-    """(height, width, left offset) of every line.  "l": all at 0.  "rl": a line's relation column is
-    estimated as its width times the relation's token position; lines are aligned at the largest such
-    column, and a line without a relation starts there (the right column)."""
+    """(height, width, left offset) of every part.  "l": all at 0.  "rl"/"rows": a part's alignment column
+    is estimated as its width times the relation's (or the first ``&``'s) token position; parts are
+    aligned at the largest such column, and a part without one starts there (the right column)."""
 
     parts = [_part_size(store, j, cfg) for j in idx]
-    if aug.stack_style != "rl":
+    if aug.stack_style not in ("rl", "rows"):
         return [(h, w, 0) for h, w in parts]
     cols = []
     for j, (_, w) in zip(idx, parts):
-        toks = store.labels[j].split()
-        cut = relation_cut(toks)
-        cols.append(None if cut is None else round(w * cut / len(toks)))
+        f = _cut_fraction(store.labels[j].split())
+        cols.append(None if f is None else round(w * f))
     x = max((c for c in cols if c is not None), default=0)
     return [(h, w, x - c if c is not None else x) for (h, w), c in zip(parts, cols)]
 
@@ -159,8 +197,9 @@ def stacked_crop(store: CropStore, idx: Sequence[int], cfg: ImageConfig, aug: Au
 def stacked_tokens(store: CropStore, idx: Sequence[int], style: str = "l") -> list[int]:
     r"""Token ids of the composition's label, BOS..EOS.
 
-    "l":  \begin{array} { l } { f1 } \\ { f2 } ... \end{array}
-    "rl": \begin{array} { r l } { lhs1 } & { { } = rhs1 } \\ & { { } f2 } ... \end{array}
+    "l":    \begin{array} { l } { f1 } \\ { f2 } ... \end{array}
+    "rl":   \begin{array} { r l } { lhs1 } & { { } = rhs1 } \\ & { { } f2 } ... \end{array}
+    "rows": as "rl", but a part that is itself an r l block contributes its own rows.
     """
 
     v = store.vocab
@@ -168,7 +207,7 @@ def stacked_tokens(store: CropStore, idx: Sequence[int], style: str = "l") -> li
     if style == "l":
         ids = [v.bos_id, *(v.stoi[t] for t in ("\\begin{array}", "{", "l", "}"))]
     else:
-        ids = [v.bos_id, *(v.stoi[t] for t in ("\\begin{array}", "{", "r", "l", "}"))]
+        ids = [v.bos_id, *(v.stoi[t] for t in RL_HEAD)]
     for n, j in enumerate(idx):
         if n:
             ids.append(v.stoi["\\\\"])
@@ -176,7 +215,15 @@ def stacked_tokens(store: CropStore, idx: Sequence[int], style: str = "l") -> li
         if style == "l":
             ids += [ob, *body, cb]
             continue
-        cut = relation_cut(store.labels[j].split())  # one id per token: the same index
+        toks = store.labels[j].split()  # one id per token: the same indices
+        rows = rl_rows(toks) if style == "rows" else None
+        if rows:
+            for r, (s, e) in enumerate(rows):
+                if r:
+                    ids.append(v.stoi["\\\\"])
+                ids += body[s:e]
+            continue
+        cut = relation_cut(toks)
         amp = v.stoi["&"]
         if cut is None:
             ids += [amp, ob, ob, cb, *body, cb]
@@ -187,8 +234,10 @@ def stacked_tokens(store: CropStore, idx: Sequence[int], style: str = "l") -> li
 
 
 def stacked_length(store: CropStore, idx: Sequence[int], style: str = "l") -> int:
-    """``len(stacked_tokens(...))`` from the label lengths alone (no id lists built)."""
+    """``len(stacked_tokens(...))``; for "l"/"rl" from the label lengths alone (no id lists built)."""
 
+    if style == "rows":
+        return len(stacked_tokens(store, idx, style))
     rows = len(idx)
     lengths = [int(store.target_offsets[j + 1] - store.target_offsets[j]) - 2 for j in idx]  # without BOS/EOS
     if style == "l":  # BOS + 4 + sum(len + 2) + (rows - 1) + 1 + EOS
@@ -309,6 +358,11 @@ class ShapeBatchSampler(Sampler[list[tuple[int, float, int]]]):
 
         aug, rng = self.aug_cfg, epoch_rng(self.seed, self.epoch, 2)
         pool = np.asarray(self.indices)
+        if aug.stack_style == "rows":  # partners: whole r l blocks (all samples when the store has too few)
+            if not hasattr(self, "_rl_pool"):
+                self._rl_pool = np.asarray([i for i in self.indices if rl_rows(self.store.labels[i].split())])
+            if len(self._rl_pool) >= 2:
+                pool = self._rl_pool
         draw = rng.random(n)
         count = rng.integers(2, aug.stack_max + 1, size=n)
         pick = pool[rng.integers(0, len(pool), size=(n, max(1, aug.stack_max - 1)))]

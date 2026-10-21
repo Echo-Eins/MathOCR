@@ -201,6 +201,51 @@ def test_stacking_rl_style_follows_the_aligned_convention(tiny_data):
                 assert stacked_length(store, (k[0], *k[3]), "rl") <= 64
 
 
+def test_stacking_rows_style_merges_genuine_blocks(tmp_path):
+    """'rows': partners are whole array{r l} blocks and contribute their own rows; the anchor becomes one row."""
+
+    import io
+
+    import numpy as np
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from mathocr.data.build import SCHEMA, _analyze_bytes
+    from mathocr.data.dataset import (AugmentConfig, CropStore, ShapeBatchSampler, rl_rows, stacked_length,
+                                      stacked_tokens)
+    from mathocr.image import ImageConfig
+    from mathocr.tokenizer import Vocab, tokenize
+
+    from conftest import render
+
+    block1 = "\\begin{array} { r l } { a } & { { } = b } \\\\ { c } & { { } = d } \\end{array}"
+    block2 = "\\begin{array} { r l } & { { } x + y } \\\\ { u } & { { } = v } \\\\ \\end{array}"  # trailing \\ dropped
+    labels = ["x + y = 2", block1, block2, "a b"]
+    cols = {f.name: [] for f in SCHEMA}
+    for i, label in enumerate(labels):
+        buf = io.BytesIO()
+        render("x+y=2", size=20).save(buf, format="PNG")  # any ink: only the label matters here
+        crop, h, w, g = _analyze_bytes(buf.getvalue())
+        for key, v in zip(SCHEMA.names, (f"syn/{i}", "syn", label, crop, h, w, g)):
+            cols[key].append(v)
+    pq.write_table(pa.table(cols, schema=SCHEMA), tmp_path / "train.parquet")
+    vocab = Vocab.build((tokenize(l) for l in labels), 1)
+    store = CropStore(tmp_path / "train.parquet", vocab)
+    assert rl_rows(block1.split()) == [(5, 15), (16, 26)] and len(rl_rows(block2.split())) == 2
+    assert rl_rows("x + y = 2".split()) is None
+    words = vocab.decode(stacked_tokens(store, (0, 1, 2), "rows"))
+    expect = ("\\begin{array} { r l } { x + y } & { { } = 2 } \\\\ { a } & { { } = b } \\\\ { c } & { { } = d } \\\\ "
+              "& { { } x + y } \\\\ { u } & { { } = v } \\end{array}")
+    assert " ".join(words) == expect
+    assert stacked_length(store, (0, 1, 2), "rows") == len(words) + 2  # BOS/EOS are not decoded
+    sampler = ShapeBatchSampler(store, ImageConfig(), 400_000, 8, 1, train=True, aug_cfg=AugmentConfig(p_stack=1.0, stack_style="rows"),
+                                max_tokens=256)
+    sampler.set_epoch(0)
+    keys = [k for batch in sampler.batches() for k in batch if len(k) > 3]
+    assert keys and all(j in (1, 2) for k in keys for j in k[3])  # partners come from the r l pool
+    assert len(sampler._rl_pool) == 2 and np.array_equal(sampler._rl_pool, [1, 2])
+
+
 @cuda
 @pytest.mark.parametrize("mode", ["self", "knn"])
 def test_soft_target_distillation_is_reproducible(tiny_config, tiny_data, tmp_path, mode):
