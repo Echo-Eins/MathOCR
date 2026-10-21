@@ -11,7 +11,10 @@ as ``(out, in * kh * kw)`` matrices.
 
 One optimizer object owns both kinds of groups (``use_muon``), so the
 trainer's single state dict, LR schedule and resume logic stay unchanged.
-Everything is plain deterministic tensor math.
+Everything is plain deterministic tensor math.  A step costs a few dozen
+kernel launches rather than thousands: element-wise updates use the
+multi-tensor ``torch._foreach_*`` ops (same values as the per-tensor ops), and
+the Newton-Schulz iteration runs once per matrix shape on a stacked batch.
 """
 
 from __future__ import annotations
@@ -25,18 +28,25 @@ from torch import nn
 
 
 def zeropower_via_newtonschulz5(g: torch.Tensor, steps: int = 5, eps: float = 1e-7) -> torch.Tensor:
-    """Approximate orthogonal polar factor ``U V^T`` of a 2D ``g`` (bf16, Keller Jordan's quintic)."""
+    """Approximate orthogonal polar factor ``U V^T`` of a 2D ``g``, or of every matrix of a 3D
+    batch of same-shape matrices (bf16, Keller Jordan's quintic).  Each iteration is three GEMMs
+    for the whole batch: ``b s + c s^2`` and ``a x + B x`` are fused into ``baddbmm``."""
 
     a, b, c = 3.4445, -4.7750, 2.0315
     x = g.bfloat16()
-    transposed = x.size(0) > x.size(1)
+    single = x.dim() == 2
+    if single:
+        x = x.unsqueeze(0)
+    transposed = x.size(-2) > x.size(-1)
     if transposed:
-        x = x.T
-    x = x / (x.norm() + eps)
+        x = x.mT
+    x = x / (x.norm(dim=(-2, -1), keepdim=True) + eps)
     for _ in range(steps):
-        s = x @ x.T
-        x = a * x + (b * s + c * (s @ s)) @ x
-    return x.T if transposed else x
+        s = x @ x.mT
+        x = torch.baddbmm(x, torch.baddbmm(s, s, s, beta=b, alpha=c), x, beta=a)
+    if transposed:
+        x = x.mT
+    return x[0] if single else x
 
 
 class Muon(torch.optim.Optimizer):
@@ -58,23 +68,38 @@ class Muon(torch.optim.Optimizer):
 
     def _muon(self, group: dict[str, Any]) -> None:
         lr, wd, mom = group["lr"], group["weight_decay"], group["momentum"]
-        for p in group["params"]:
-            if p.grad is None:
-                continue
-            g = p.grad.reshape(p.shape[0], -1)
+        params = [p for p in group["params"] if p.grad is not None]
+        if not params:
+            return
+        grads = [p.grad.reshape(p.shape[0], -1) for p in params]
+        bufs = []
+        for p, g in zip(params, grads):
             state = self.state[p]
             if "momentum_buffer" not in state:
                 state["momentum_buffer"] = torch.zeros_like(g)
-            buf = state["momentum_buffer"]
-            buf.mul_(mom).add_(g)
-            update = g.add(buf, alpha=mom) if group["nesterov"] else buf
-            ortho = zeropower_via_newtonschulz5(update, group["ns_steps"]).to(p.dtype)
-            if wd:
-                p.mul_(1 - lr * wd)
-            p.add_(ortho.view_as(p), alpha=-lr * 0.2 * math.sqrt(max(g.shape)))
+            bufs.append(state["momentum_buffer"])
+        torch._foreach_mul_(bufs, mom)
+        torch._foreach_add_(bufs, grads)
+        updates = torch._foreach_add(grads, bufs, alpha=mom) if group["nesterov"] else bufs
+        if wd:
+            torch._foreach_mul_(params, 1 - lr * wd)
+        # One batched Newton-Schulz per (short side, long side): tall matrices join the wide ones
+        # transposed (the iteration orthogonalizes either orientation).  Groups keep parameter order.
+        by_shape: dict[tuple[int, int], list[int]] = {}
+        for i, u in enumerate(updates):
+            by_shape.setdefault((min(u.shape), max(u.shape)), []).append(i)
+        for (_, long_side), idx in by_shape.items():
+            tall = [updates[i].size(0) > updates[i].size(1) for i in idx]
+            ortho = zeropower_via_newtonschulz5(
+                torch.stack([updates[i].mT if t else updates[i] for i, t in zip(idx, tall)]), group["ns_steps"])
+            torch._foreach_add_([params[i] for i in idx],
+                                [(o.mT if t else o).reshape(params[i].shape).to(params[i].dtype)
+                                 for i, t, o in zip(idx, tall, ortho.unbind(0))],
+                                alpha=-lr * 0.2 * math.sqrt(long_side))
 
     def _adamw(self, group: dict[str, Any]) -> None:
         lr, wd, (b1, b2), eps = group["lr"], group["weight_decay"], group["betas"], group["eps"]
+        by_step: dict[int, list[torch.Tensor]] = {}
         for p in group["params"]:
             if p.grad is None:
                 continue
@@ -84,13 +109,21 @@ class Muon(torch.optim.Optimizer):
                 state["exp_avg"] = torch.zeros_like(p)
                 state["exp_avg_sq"] = torch.zeros_like(p)
             state["step"] += 1
-            t = state["step"]
-            state["exp_avg"].mul_(b1).add_(p.grad, alpha=1 - b1)
-            state["exp_avg_sq"].mul_(b2).addcmul_(p.grad, p.grad, value=1 - b2)
+            by_step.setdefault(state["step"], []).append(p)
+        for t, params in by_step.items():  # normally one bucket: every parameter steps every time
+            grads = [p.grad for p in params]
+            exp_avg = [self.state[p]["exp_avg"] for p in params]
+            exp_avg_sq = [self.state[p]["exp_avg_sq"] for p in params]
+            torch._foreach_mul_(exp_avg, b1)
+            torch._foreach_add_(exp_avg, grads, alpha=1 - b1)
+            torch._foreach_mul_(exp_avg_sq, b2)
+            torch._foreach_addcmul_(exp_avg_sq, grads, grads, value=1 - b2)
             if wd:
-                p.mul_(1 - lr * wd)
-            denom = (state["exp_avg_sq"] / (1 - b2**t)).sqrt_().add_(eps)
-            p.addcdiv_(state["exp_avg"], denom, value=-lr / (1 - b1**t))
+                torch._foreach_mul_(params, 1 - lr * wd)
+            denom = torch._foreach_div(exp_avg_sq, 1 - b2**t)
+            torch._foreach_sqrt_(denom)
+            torch._foreach_add_(denom, eps)
+            torch._foreach_addcdiv_(params, exp_avg, denom, value=-lr / (1 - b1**t))
 
 
 def _no_decay(name: str, p: nn.Parameter) -> bool:

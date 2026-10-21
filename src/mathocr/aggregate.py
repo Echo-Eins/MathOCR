@@ -65,8 +65,8 @@ def main(argv: list[str] | None = None) -> None:
     args = ap.parse_args(argv)
     agg = collect(args.runs)
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.with_suffix(".json").write_text(json.dumps(agg, indent=2) + "\n")
-    args.out.with_suffix(".md").write_text(markdown(agg))
+    args.out.with_suffix(".json").write_text(json.dumps(agg, indent=2) + "\n", encoding="utf-8", newline="\n")
+    args.out.with_suffix(".md").write_text(markdown(agg), encoding="utf-8", newline="\n")
     print(markdown(agg))
 
 

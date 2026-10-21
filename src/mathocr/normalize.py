@@ -43,12 +43,14 @@ def normalize_batch(formulas: Sequence[str], timeout_s: float = 3600.0) -> list[
 
     if not formulas:
         return []
-    payload = "".join(_pre(f) + "\n" for f in formulas)
+    # Bytes with bare "\n", not text mode: on Windows text mode sends "\r\n", and node's readline
+    # counts a "\r" | "\n" pair split across two pipe reads as two line ends (extra output lines).
+    payload = "".join(_pre(f) + "\n" for f in formulas).encode("utf-8")
     proc = subprocess.run(
         ["node", str(NORMALIZER_JS), "normalize"],
-        input=payload, capture_output=True, text=True, encoding="utf-8", timeout=timeout_s, check=True,
+        input=payload, capture_output=True, timeout=timeout_s, check=True,
     )
-    lines = proc.stdout.split("\n")
+    lines = proc.stdout.decode("utf-8").split("\n")
     if lines and lines[-1] == "":
         lines.pop()
     if len(lines) != len(formulas):

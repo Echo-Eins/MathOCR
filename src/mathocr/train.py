@@ -58,7 +58,8 @@ def _git_commit() -> str | None:
 
 
 def _worker_init(_: int) -> None:
-    os.nice(19)
+    if hasattr(os, "nice"):  # POSIX only (Windows has none)
+        os.nice(19)
     torch.set_num_threads(1)
 
 
@@ -258,7 +259,7 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
         if device.type == "cuda":
             torch.cuda.set_rng_state(state["rng_cuda"])
     else:
-        (run_dir / "config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+        (run_dir / "config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8", newline="\n")
         (run_dir / "run.json").write_text(json.dumps({
             "seed": seed,
             "config_sha256": config_hash(cfg),
@@ -269,12 +270,12 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
             "steps_per_epoch": steps_per_epoch,
             "determinism": det,
             "python": sys.version,
-        }, indent=2) + "\n")
+        }, indent=2) + "\n", encoding="utf-8", newline="\n")
 
     common = {"model_config": asdict(mcfg), "image_config": asdict(icfg), "vocab": vocab.itos, "seed": seed,
               "config_sha256": config_hash(cfg)}
     writer = SummaryWriter(run_dir / "tb")
-    log = (run_dir / "log.jsonl").open("a", encoding="utf-8")
+    log = (run_dir / "log.jsonl").open("a", encoding="utf-8", newline="\n")
     try:
         for epoch in range(start_epoch, tcfg["epochs"]):
             sampler.set_epoch(epoch)

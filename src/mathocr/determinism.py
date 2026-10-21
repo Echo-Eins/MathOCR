@@ -28,6 +28,10 @@ def configure(device: torch.device) -> dict[str, object]:
     if device.type == "cuda" and workspace not in (":4096:8", ":16:8"):
         raise ValueError("CUDA determinism requires CUBLAS_WORKSPACE_CONFIG=:4096:8 or :16:8")
     torch.use_deterministic_algorithms(True)
+    # Deterministic mode would also fill every new tensor with a sentinel (~1.6k fill kernels per training
+    # step, ~9% of it).  That only matters to ops that read uninitialized memory -- none here: the same
+    # training with the fill on and off ends in bitwise-identical weights.
+    torch.utils.deterministic.fill_uninitialized_memory = False
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.allow_tf32 = False
@@ -35,6 +39,7 @@ def configure(device: torch.device) -> dict[str, object]:
     torch.set_float32_matmul_precision("highest")
     return {
         "deterministic_algorithms": torch.are_deterministic_algorithms_enabled(),
+        "fill_uninitialized_memory": torch.utils.deterministic.fill_uninitialized_memory,
         "cublas_workspace_config": workspace,
         "cudnn_benchmark": torch.backends.cudnn.benchmark,
         "cudnn_deterministic": torch.backends.cudnn.deterministic,

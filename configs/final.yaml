@@ -39,6 +39,7 @@ model:
   encoder: transformer     # transformer | aas | aas_sort (linear-cost global mixers, model.py)
   local_expansion: 1.5     # AAS local residual width (12 d^2 per block, same as a Transformer layer)
   sort_window: 32
+  attn_kernel: sdpa        # sdpa | triton (fused deterministic attention for long key sets, attn_kernel.py)
   count_head: false        # symbol-count head on the encoder memory (needs train.count_loss > 0)
   count_feed: false        # CAN-style: predicted counts fed to every decoder input (needs count_head)
   ring_bias: false          # decoder layer l: ring x direction bias around layer l-1's attention focus

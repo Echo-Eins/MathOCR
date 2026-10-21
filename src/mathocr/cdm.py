@@ -31,17 +31,19 @@ def run_cdm(run_dir: Path, splits: list[str] | None, cpus: int, keep: bool) -> d
     for f in files:
         split = f.name.removesuffix(".cdm.json")
         out = eval_dir / "cdm_work"
-        cmd = ["docker", "run", "--rm", f"--cpus={cpus}", "-u", f"{os.getuid()}:{os.getgid()}",
+        # The container writes as the host user on POSIX; Docker Desktop (Windows) maps the mount itself.
+        user = ["-u", f"{os.getuid()}:{os.getgid()}"] if hasattr(os, "getuid") else []
+        cmd = ["docker", "run", "--rm", f"--cpus={cpus}", *user,
                "-e", "HOME=/tmp", "-v", f"{eval_dir}:/work", IMAGE,
                "-i", f"/work/{f.name}", "-o", "/work/cdm_work", "-p", str(cpus)]
-        subprocess.run(["nice", "-n", "19", *cmd], check=True)
+        subprocess.run(["nice", "-n", "19", *cmd] if shutil.which("nice") else cmd, check=True)
         # evaluation.py names its output dir after the input basename up to the first dot.
         res = json.loads((out / split / "metrics_res.json").read_text())
         details = res.get("details", {})
         summary[split] = {"cdm": res["mean_score"], "cdm_exp_rate": res["exp_rate"],
                           "scored": len(details), "submitted": len(json.loads(f.read_text()))}
         print(json.dumps({"split": split, **summary[split]}), flush=True)
-        summary_path.write_text(json.dumps(summary, indent=2) + "\n")
+        summary_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8", newline="\n")
         if not keep:
             shutil.rmtree(out / split)
     return summary

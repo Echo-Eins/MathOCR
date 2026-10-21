@@ -96,7 +96,8 @@ def _analyze_path(path: str) -> tuple[bytes, int, int, float]:
 
 
 def _nice() -> None:
-    os.nice(19)
+    if hasattr(os, "nice"):  # POSIX only (Windows has none)
+        os.nice(19)
 
 
 class Rows:
@@ -334,7 +335,8 @@ def build(cfg: dict) -> dict:
         "vocab": {"size": len(vocab), "sha256": sources.sha256_file(out_dir / "vocab.json")},
         "leakage_check": _leakage(tables),
     }
-    (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8",
+                                           newline="\n")
     return manifest
 
 

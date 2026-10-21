@@ -57,13 +57,13 @@ def evaluate(run_dir: Path, data_dir: Path, splits: list[str], checkpoint: str, 
     for split in splits:
         store = CropStore(data_dir / f"{split}.parquet", vocab)  # targets are needed to collate batches
         preds = decode_store(model, store, icfg, vocab, device, pixel_budget, max_batch)
-        with (out_dir / f"{split}.jsonl").open("w", encoding="utf-8") as f:
+        with (out_dir / f"{split}.jsonl").open("w", encoding="utf-8", newline="\n") as f:
             for uid, gt, pred in zip(store.uids, store.labels, preds):
                 f.write(json.dumps({"uid": uid, "gt": gt, "pred": pred}, ensure_ascii=False) + "\n")
         subset = cdm_subset(store.uids, cdm_size)
         (out_dir / f"{split}.cdm.json").write_text(json.dumps(
             [{"img_id": cdm_image_id(store.uids[i]), "gt": store.labels[i], "pred": preds[i]} for i in subset],
-            ensure_ascii=False, indent=0), encoding="utf-8")
+            ensure_ascii=False, indent=0), encoding="utf-8", newline="\n")
         metrics = text_metrics(preds, store.labels)
         if check_canonical:
             idx = cdm_subset(store.uids, check_canonical)
@@ -72,7 +72,7 @@ def evaluate(run_dir: Path, data_dir: Path, splits: list[str], checkpoint: str, 
             metrics["canonical_mismatch"] = sum(single[k] != preds[i] for k, i in enumerate(idx))
         results["splits"][split] = metrics
         print(json.dumps({"split": split, **metrics}), flush=True)
-    (out_dir / "metrics.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
+    (out_dir / "metrics.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8", newline="\n")
     return results
 
 

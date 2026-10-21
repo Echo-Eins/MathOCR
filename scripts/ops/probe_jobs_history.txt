@@ -69,3 +69,6 @@ m_lr12_kdalt_s1|1|train.optimizer=muon train.lr=1.2e-3 train.soft_targets=/mnt/S
 # kNN memory compressed (PCA 128): check on the probe teacher, then the final model on the test splits
 knnp128_m_lr12_s1|1|
 fknn_final_s1|1|
+# 2026-10-21, Windows / RTX 5090 Laptop (PROBE_ROOT=D:\MathOCR\probe), accelerated code; canvas check for HANDOFF P0 (b)
+win_m_lr6_s8x4_g18_s1|1|train.optimizer=muon train.lr=6.0e-4 model.enc_stride=8x4 image.target_glyph_px=18.0 model.attn_kernel=triton
+win_m_lr6_s8x4_g18_c256x1024_s1|1|train.optimizer=muon train.lr=6.0e-4 model.enc_stride=8x4 image.target_glyph_px=18.0 model.attn_kernel=triton image.max_h=256 image.max_w=1024

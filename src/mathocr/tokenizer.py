@@ -77,7 +77,8 @@ class Vocab:
         return cls([*SPECIALS, *kept])
 
     def save(self, path: Path) -> None:
-        path.write_text(json.dumps(self.itos, ensure_ascii=False, indent=0) + "\n", encoding="utf-8")
+        # LF on every OS: the manifest records this file's sha256 as part of the data version.
+        path.write_text(json.dumps(self.itos, ensure_ascii=False, indent=0) + "\n", encoding="utf-8", newline="\n")
 
     @classmethod
     def load(cls, path: Path) -> "Vocab":

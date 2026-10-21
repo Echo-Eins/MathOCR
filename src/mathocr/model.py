@@ -39,6 +39,10 @@ class ModelConfig:
     # sorting on a learned coordinate, windowed attention in that order).
     encoder: str = "transformer"
     aas_kernel: bool = False  # fused Triton AAS (deterministic gather-form backward)
+    # "sdpa": F.scaled_dot_product_attention everywhere; "triton": fused deterministic attention
+    # (attn_kernel.py) for bf16/fp16 CUDA calls with >= ATTN_KERNEL_MIN_KEYS keys (training and the
+    # teacher-forced validation loss; fp32 inference stays on SDPA)
+    attn_kernel: str = "sdpa"
     local_expansion: float = 1.5  # hidden width of the AAS local residuals (12 d^2 per block, as a Transformer layer)
     sort_window: int = 32
     count_head: bool = False  # per-position symbol densities summed into counts (auxiliary loss)
@@ -465,10 +469,13 @@ class SortBlock(nn.Module):
 # ------------------------------------------------------------------- Transformer
 
 
+ATTN_KERNEL_MIN_KEYS = 256  # shorter key sets (decoder self-attention) are as fast on SDPA
+
+
 class Attention(nn.Module):
-    def __init__(self, d: int, heads: int, dropout: float):
+    def __init__(self, d: int, heads: int, dropout: float, kernel: str = "sdpa"):
         super().__init__()
-        self.heads, self.dropout = heads, dropout
+        self.heads, self.dropout, self.kernel = heads, dropout, kernel
         self.q = nn.Linear(d, d)
         self.kv = nn.Linear(d, 2 * d)
         self.out = nn.Linear(d, d)
@@ -484,7 +491,13 @@ class Attention(nn.Module):
     def attend(self, x: Tensor, k: Tensor, v: Tensor, causal: bool) -> Tensor:
         q = self.split(self.q(x))
         p = self.dropout if self.training else 0.0
-        y = F.scaled_dot_product_attention(q, k, v, dropout_p=p, is_causal=causal)
+        if (self.kernel == "triton" and q.is_cuda and q.dtype in (torch.bfloat16, torch.float16)
+                and k.shape[2] >= ATTN_KERNEL_MIN_KEYS):  # a pure function of the call's shape and dtype
+            from mathocr.attn_kernel import flash_attention
+
+            y = flash_attention(q, k, v, causal, p)
+        else:
+            y = F.scaled_dot_product_attention(q, k, v, dropout_p=p, is_causal=causal)
         b, h, n, dh = y.shape
         return self.out(y.transpose(1, 2).reshape(b, n, h * dh))
 
@@ -495,9 +508,9 @@ class FeedForward(nn.Sequential):
 
 
 class EncoderLayer(nn.Module):
-    def __init__(self, d: int, heads: int, mult: int, dropout: float):
+    def __init__(self, d: int, heads: int, mult: int, dropout: float, attn_kernel: str = "sdpa"):
         super().__init__()
-        self.n1, self.attn = nn.LayerNorm(d), Attention(d, heads, dropout)
+        self.n1, self.attn = nn.LayerNorm(d), Attention(d, heads, dropout, attn_kernel)
         self.n2, self.ff = nn.LayerNorm(d), FeedForward(d, mult, dropout)
         self.drop = nn.Dropout(dropout)
 
@@ -508,10 +521,10 @@ class EncoderLayer(nn.Module):
 
 
 class DecoderLayer(nn.Module):
-    def __init__(self, d: int, heads: int, mult: int, dropout: float):
+    def __init__(self, d: int, heads: int, mult: int, dropout: float, attn_kernel: str = "sdpa"):
         super().__init__()
-        self.n1, self.self_attn = nn.LayerNorm(d), Attention(d, heads, dropout)
-        self.n2, self.cross_attn = nn.LayerNorm(d), Attention(d, heads, dropout)
+        self.n1, self.self_attn = nn.LayerNorm(d), Attention(d, heads, dropout, attn_kernel)
+        self.n2, self.cross_attn = nn.LayerNorm(d), Attention(d, heads, dropout, attn_kernel)
         self.n3, self.ff = nn.LayerNorm(d), FeedForward(d, mult, dropout)
         self.drop = nn.Dropout(dropout)
 
@@ -850,7 +863,8 @@ class Im2Latex(nn.Module):
         self.proj = nn.Linear(self.backbone.out_channels, d)
         self.enc_drop = nn.Dropout(cfg.dropout)
         if cfg.encoder == "transformer":
-            blocks = (EncoderLayer(d, cfg.n_heads, cfg.ff_mult, cfg.dropout) for _ in range(cfg.enc_layers))
+            blocks = (EncoderLayer(d, cfg.n_heads, cfg.ff_mult, cfg.dropout, cfg.attn_kernel)
+                      for _ in range(cfg.enc_layers))
         elif cfg.encoder == "aas":
             blocks = (AASBlock(d, cfg.n_heads, cfg.local_expansion, cfg.aas_kernel) for _ in range(cfg.enc_layers))
         elif cfg.encoder == "aas_sort":
@@ -862,7 +876,8 @@ class Im2Latex(nn.Module):
         self.embed = nn.Embedding(cfg.vocab_size, d)
         self.register_buffer("tok_pos", sinusoid_1d(cfg.max_len, d), persistent=False)
         self.dec_drop = nn.Dropout(cfg.dropout)
-        self.decoder = nn.ModuleList(DecoderLayer(d, cfg.n_heads, cfg.ff_mult, cfg.dropout) for _ in range(cfg.dec_layers))
+        self.decoder = nn.ModuleList(DecoderLayer(d, cfg.n_heads, cfg.ff_mult, cfg.dropout, cfg.attn_kernel)
+                                     for _ in range(cfg.dec_layers))
         self.dec_norm = nn.LayerNorm(d)
         # Registered last, so enabling it leaves the initialization of every
         # other parameter unchanged.
