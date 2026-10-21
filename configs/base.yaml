@@ -64,9 +64,10 @@ augment:
   p_contrast: 0.3
   p_noise: 0.25
   noise_std: [2.0, 12.0]
-  p_stack: 0.0              # multi-line composition of 2..stack_max formulas (array{l} label)
+  p_stack: 0.0              # multi-line composition of 2..stack_max formulas (dataset.py)
   stack_max: 3
   stack_gap: 0.6
+  stack_style: l            # l: left-aligned lines, array{l} label | rl: aligned at the relation, array{r l} label
 
 train:
   epochs: 15

@@ -148,6 +148,59 @@ def test_stacking_is_deterministic_and_shape_consistent(tiny_data):
     assert words.count("\\\\") == len(stacked[3]) and len(target) <= 64
 
 
+def test_stacking_rl_style_follows_the_aligned_convention(tiny_data):
+    from functools import partial
+
+    from torch.utils.data import DataLoader
+
+    from mathocr.data.dataset import (AugmentConfig, CropStore, ShapeBatchSampler, TrainItems, collate, relation_cut,
+                                      stacked_length, stacked_size, stacked_tokens)
+    from mathocr.image import ImageConfig
+    from mathocr.tokenizer import Vocab
+
+    assert relation_cut("x + y = 2".split()) == 3 and relation_cut("k _ { 1 } < k _ { 2 }".split()) == 5
+    assert relation_cut("a ^ { 2 } + b".split()) is None and relation_cut("= x".split()) is None
+    assert relation_cut("{ a = b } c".split()) is None  # nested relations do not count
+    base = Vocab.load(tiny_data / "vocab.json")
+    vocab = Vocab(base.itos + [t for t in ("\\begin{array}", "\\end{array}", "l", "r", "&", "\\\\") if t not in base])
+    store = CropStore(tiny_data / "train.parquet", vocab)
+    cfg, aug = ImageConfig(max_h=384, max_w=1536), AugmentConfig(p_stack=0.6, stack_style="rl")
+    for idx in ((0, 1), (3, 5, 7), (2, 4)):
+        for style in ("l", "rl"):
+            assert stacked_length(store, idx, style) == len(stacked_tokens(store, idx, style))
+    words = vocab.decode(stacked_tokens(store, (0, 1), "rl"))  # two formulas, with and without a relation
+    rows = " ".join(words[5:-1]).split(" \\\\ ")
+    assert words[:5] == ["\\begin{array}", "{", "r", "l", "}"] and len(rows) == 2
+    for row, label in zip(rows, (store.labels[0], store.labels[1])):
+        cut = relation_cut(label.split())
+        if cut is None:
+            assert row == "& { { } " + label + " }"
+        else:
+            toks = label.split()
+            assert row == "{ " + " ".join(toks[:cut]) + " } & { { } " + " ".join(toks[cut:]) + " }"
+    # the composition is at least as wide as its widest line (offsets only add width) and taller than each
+    h, w = stacked_size(store, (0, 1), cfg, aug)
+    singles = [stacked_size(store, (j,), cfg, aug) for j in (0, 1)]
+    assert w >= max(sw for _, sw in singles) and h > max(sh for sh, _ in singles)
+
+    def run(workers):
+        sampler = ShapeBatchSampler(store, cfg, 400_000, 8, 5, train=True, aug_cfg=aug, max_tokens=64)
+        sampler.set_epoch(1)
+        loader = DataLoader(TrainItems(store, cfg, aug, 5), batch_sampler=sampler, num_workers=workers,
+                            collate_fn=partial(collate, pad_id=0))
+        return list(loader), sampler.batches()
+
+    a, keys = run(0)
+    b, _ = run(2)
+    assert any(len(k) > 3 for batch in keys for k in batch)
+    for x, y in zip(a, b):
+        assert torch.equal(x["images"], y["images"]) and torch.equal(x["tokens"], y["tokens"])
+    for batch in keys:
+        for k in batch:
+            if len(k) > 3:
+                assert stacked_length(store, (k[0], *k[3]), "rl") <= 64
+
+
 @cuda
 @pytest.mark.parametrize("mode", ["self", "knn"])
 def test_soft_target_distillation_is_reproducible(tiny_config, tiny_data, tmp_path, mode):

@@ -37,12 +37,16 @@ class AugmentConfig:
     p_noise: float = 0.25
     noise_std: tuple[float, float] = (2.0, 12.0)
     # Multi-line composition: with probability p_stack a training sample is 2..stack_max
-    # formulas, each brought to the target glyph height, stacked left-aligned with a gap of
-    # stack_gap glyph heights; its label is \begin{array} { l } { f1 } \\ { f2 } ... \end{array}
-    # (the normalizer's own spelling of multi-line formulas).
+    # formulas, each brought to the target glyph height, stacked with a gap of stack_gap glyph
+    # heights.  stack_style "l": lines left-aligned, label \begin{array} { l } { f1 } \\ { f2 } ...
+    # \end{array}; "rl": the normalizer's spelling of aligned equations, \begin{array} { r l }
+    # { lhs } & { { } = rhs } \\ & { { } f2 } ... \end{array} (split at the first top-level
+    # relation; a line without one sits in the right column), with the lines aligned at the
+    # relation's estimated column -- the layout 93% of multi-line training labels have.
     p_stack: float = 0.0
     stack_max: int = 3
     stack_gap: float = 0.6
+    stack_style: str = "l"
 
 
 class CropStore:
@@ -95,39 +99,106 @@ def _part_size(store: CropStore, j: int, cfg: ImageConfig) -> tuple[int, int]:
     return max(1, round(int(store.h[j]) * s)), max(1, round(int(store.w[j]) * s))
 
 
+RELATIONS = frozenset(("=", "\\leq", "\\geq", "\\le", "\\ge", "<", ">", "\\equiv", "\\approx", "\\neq", "\\ne", "\\sim",
+                       "\\simeq", "\\propto", "\\to", "\\rightarrow", "\\Rightarrow", "\\subset", "\\subseteq", "\\in"))
+
+
+def relation_cut(tokens: Sequence[str]) -> int | None:
+    """Index of the first relation token at brace/environment depth 0 with something before it, else None."""
+
+    depth = 0
+    for i, t in enumerate(tokens):
+        if depth == 0 and i > 0 and t in RELATIONS:
+            return i
+        if t == "{" or t.startswith("\\begin{"):
+            depth += 1
+        elif t == "}" or t.startswith("\\end{"):
+            depth -= 1
+    return None
+
+
+def _part_layout(store: CropStore, idx: Sequence[int], cfg: ImageConfig, aug: AugmentConfig) -> list[tuple[int, int, int]]:
+    """(height, width, left offset) of every line.  "l": all at 0.  "rl": a line's relation column is
+    estimated as its width times the relation's token position; lines are aligned at the largest such
+    column, and a line without a relation starts there (the right column)."""
+
+    parts = [_part_size(store, j, cfg) for j in idx]
+    if aug.stack_style != "rl":
+        return [(h, w, 0) for h, w in parts]
+    cols = []
+    for j, (_, w) in zip(idx, parts):
+        toks = store.labels[j].split()
+        cut = relation_cut(toks)
+        cols.append(None if cut is None else round(w * cut / len(toks)))
+    x = max((c for c in cols if c is not None), default=0)
+    return [(h, w, x - c if c is not None else x) for (h, w), c in zip(parts, cols)]
+
+
 def stacked_size(store: CropStore, idx: Sequence[int], cfg: ImageConfig, aug: AugmentConfig) -> tuple[int, int]:
     """Crop size of the composition of ``idx`` (computable from metadata alone)."""
 
-    parts = [_part_size(store, j, cfg) for j in idx]
+    layout = _part_layout(store, idx, cfg, aug)
     gap = round(aug.stack_gap * cfg.target_glyph_px)
-    return sum(h for h, _ in parts) + gap * (len(parts) - 1), max(w for _, w in parts)
+    return sum(h for h, _, _ in layout) + gap * (len(layout) - 1), max(x + w for _, w, x in layout)
 
 
 def stacked_crop(store: CropStore, idx: Sequence[int], cfg: ImageConfig, aug: AugmentConfig) -> Crop:
-    """Formulas ``idx`` at the target glyph height, stacked left-aligned on white paper."""
+    """Formulas ``idx`` at the target glyph height, stacked on white paper (``_part_layout`` offsets)."""
 
+    layout = _part_layout(store, idx, cfg, aug)
     h, w = stacked_size(store, idx, cfg, aug)
     canvas = np.full((h, w), 255, dtype=np.uint8)
     gap, y = round(aug.stack_gap * cfg.target_glyph_px), 0
-    for j in idx:
-        ph, pw = _part_size(store, j, cfg)
+    for j, (ph, pw, x) in zip(idx, layout):
         part = Image.fromarray(store.crop(j).pixels, mode="L").resize((pw, ph), Image.Resampling.BICUBIC)
-        canvas[y : y + ph, :pw] = np.asarray(part)
+        canvas[y : y + ph, x : x + pw] = np.asarray(part)
         y += ph + gap
     return Crop(canvas, float(cfg.target_glyph_px))
 
 
-def stacked_target(store: CropStore, idx: Sequence[int]) -> np.ndarray:
-    r"""BOS \begin{array} { l } { f1 } \\ { f2 } ... \end{array} EOS as token ids."""
+def stacked_tokens(store: CropStore, idx: Sequence[int], style: str = "l") -> list[int]:
+    r"""Token ids of the composition's label, BOS..EOS.
+
+    "l":  \begin{array} { l } { f1 } \\ { f2 } ... \end{array}
+    "rl": \begin{array} { r l } { lhs1 } & { { } = rhs1 } \\ & { { } f2 } ... \end{array}
+    """
 
     v = store.vocab
-    ids = [v.bos_id, *(v.stoi[t] for t in ("\\begin{array}", "{", "l", "}"))]
+    ob, cb = v.stoi["{"], v.stoi["}"]
+    if style == "l":
+        ids = [v.bos_id, *(v.stoi[t] for t in ("\\begin{array}", "{", "l", "}"))]
+    else:
+        ids = [v.bos_id, *(v.stoi[t] for t in ("\\begin{array}", "{", "r", "l", "}"))]
     for n, j in enumerate(idx):
         if n:
             ids.append(v.stoi["\\\\"])
-        ids += [v.stoi["{"], *store.target(j)[1:-1].tolist(), v.stoi["}"]]
+        body = store.target(j)[1:-1].tolist()
+        if style == "l":
+            ids += [ob, *body, cb]
+            continue
+        cut = relation_cut(store.labels[j].split())  # one id per token: the same index
+        amp = v.stoi["&"]
+        if cut is None:
+            ids += [amp, ob, ob, cb, *body, cb]
+        else:
+            ids += [ob, *body[:cut], cb, amp, ob, ob, cb, *body[cut:], cb]
     ids += [v.stoi["\\end{array}"], v.eos_id]
-    return np.asarray(ids, dtype=np.int64)
+    return ids
+
+
+def stacked_length(store: CropStore, idx: Sequence[int], style: str = "l") -> int:
+    """``len(stacked_tokens(...))`` from the label lengths alone (no id lists built)."""
+
+    rows = len(idx)
+    lengths = [int(store.target_offsets[j + 1] - store.target_offsets[j]) - 2 for j in idx]  # without BOS/EOS
+    if style == "l":  # BOS + 4 + sum(len + 2) + (rows - 1) + 1 + EOS
+        return 6 + sum(lengths) + 3 * rows
+    extra = [5 if relation_cut(store.labels[j].split()) is None else 7 for j in idx]
+    return 7 + sum(lengths) + sum(extra) + rows  # BOS + 5 + sum(len + extra) + (rows - 1) + 1 + EOS
+
+
+def stacked_target(store: CropStore, idx: Sequence[int], style: str = "l") -> np.ndarray:
+    return np.asarray(stacked_tokens(store, idx, style), dtype=np.int64)
 
 
 def augment(arr: np.ndarray, rng: np.random.Generator, cfg: AugmentConfig) -> np.ndarray:
@@ -161,7 +232,7 @@ class TrainItems(Dataset):
         if partners:
             idx = (i, *partners)
             arr = layout(stacked_crop(self.store, idx, self.image_cfg, self.aug_cfg), self.image_cfg, jitter)
-            target = stacked_target(self.store, idx)
+            target = stacked_target(self.store, idx, self.aug_cfg.stack_style)
         else:
             arr, target = layout(self.store.crop(i), self.image_cfg, jitter), self.store.target(i)
         if self.aug_cfg is not None:
@@ -241,13 +312,12 @@ class ShapeBatchSampler(Sampler[list[tuple[int, float, int]]]):
         draw = rng.random(n)
         count = rng.integers(2, aug.stack_max + 1, size=n)
         pick = pool[rng.integers(0, len(pool), size=(n, max(1, aug.stack_max - 1)))]
-        lengths = np.diff(self.store.target_offsets) - 2  # without BOS/EOS
         out = {}
         for i in self.indices:
             if draw[i] >= aug.p_stack:
                 continue
             chosen = [int(j) for j in pick[i, : count[i] - 1]]
-            while chosen and lengths[i] + sum(lengths[j] for j in chosen) + 3 * len(chosen) + 7 > self.max_tokens:
+            while chosen and stacked_length(self.store, (i, *chosen), aug.stack_style) > self.max_tokens:
                 chosen.pop()
             if chosen:
                 out[i] = tuple(chosen)
