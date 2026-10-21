@@ -72,3 +72,8 @@ fknn_final_s1|1|
 # 2026-10-21, Windows / RTX 5090 Laptop (PROBE_ROOT=D:\MathOCR\probe), accelerated code; canvas check for HANDOFF P0 (b)
 win_m_lr6_s8x4_g18_s1|1|train.optimizer=muon train.lr=6.0e-4 model.enc_stride=8x4 image.target_glyph_px=18.0 model.attn_kernel=triton
 win_m_lr6_s8x4_g18_c256x1024_s1|1|train.optimizer=muon train.lr=6.0e-4 model.enc_stride=8x4 image.target_glyph_px=18.0 model.attn_kernel=triton image.max_h=256 image.max_w=1024
+# length / EOS fix, stand round 1 (HANDOFF P1-0): canvas control, stacking + max_len 512, real long formulas (PROBE_ROOT=D:\MathOCR\probe_long, --data-src data/processed_long --extra-long)
+win_len512_stack01_c384_s1|1|train.optimizer=muon train.lr=6.0e-4 model.enc_stride=8x4 image.target_glyph_px=18.0 model.attn_kernel=triton image.max_h=384 image.max_w=1536 model.max_len=512 augment.p_stack=0.1
+win_ctrl_c384_s1|1|train.optimizer=muon train.lr=6.0e-4 model.enc_stride=8x4 image.target_glyph_px=18.0 model.attn_kernel=triton image.max_h=384 image.max_w=1536
+win_len512_real_c384_s1|1|train.optimizer=muon train.lr=6.0e-4 model.enc_stride=8x4 image.target_glyph_px=18.0 model.attn_kernel=triton image.max_h=384 image.max_w=1536 model.max_len=512  (data/processed_long, --extra-long)
+win_len512_stackrl01_c384_s1|1|train.optimizer=muon train.lr=6.0e-4 model.enc_stride=8x4 image.target_glyph_px=18.0 model.attn_kernel=triton image.max_h=384 image.max_w=1536 model.max_len=512 augment.p_stack=0.1 augment.stack_style=rl

@@ -59,9 +59,10 @@ def _rank(uids: list[str]) -> list[int]:
     return sorted(range(len(uids)), key=lambda i: hashlib.sha256(uids[i].encode()).digest())
 
 
-def build_subsets(src: Path, extra_long: bool = False) -> None:
+def build_subsets(src: Path, extra_long: bool = False, extra_long_rows: int | None = None) -> None:
     """Train subset: the ``SIZES['train']`` smallest-hash rows of at most ``SHORT_MAX_TOKENS`` tokens (on the
-    standard data: all rows, so the subset is the usual one); ``extra_long`` adds every longer row on top."""
+    standard data: all rows, so the subset is the usual one); ``extra_long`` adds the longer rows on top --
+    all of them, or the ``extra_long_rows`` smallest-hash ones."""
 
     if (DATA / "manifest.json").exists():
         return
@@ -76,6 +77,8 @@ def build_subsets(src: Path, extra_long: bool = False) -> None:
     if extra_long:
         is_short = set(short)
         long_rows = [i for i in range(len(uids)) if i not in is_short]
+        if extra_long_rows is not None:
+            long_rows = [long_rows[j] for j in _rank([uids[i] for i in long_rows])[:extra_long_rows]]
         keep += long_rows
         n_long = len(long_rows)
     pq.write_table(t.take(sorted(keep)), tmp / "train.parquet", row_group_size=1024)
@@ -151,8 +154,8 @@ def score(preds: list[list[str]], gts: list[str]) -> dict:
 
 
 def run_probe(name: str, seed: int, epochs: int, overrides: list[str], src: Path | None = None,
-              extra_long: bool = False) -> dict:
-    build_subsets(src or ROOT / "data" / "processed", extra_long)
+              extra_long: bool = False, extra_long_rows: int | None = None) -> dict:
+    build_subsets(src or ROOT / "data" / "processed", extra_long, extra_long_rows)
     cfg = load_config(ROOT / "configs" / "base.yaml", [
         f"data.out_dir={DATA}", f"train.epochs={epochs}", "train.warmup_steps=300", "train.val_decode_samples=800",
         "train.log_every=50", "train.workers=2", *overrides])
@@ -333,6 +336,7 @@ def main() -> None:
     ap.add_argument("--data-src", type=Path, default=None, help="processed data to subset (default: data/processed)")
     ap.add_argument("--extra-long", action="store_true",
                     help="train subset = the 20k short rows + every row longer than 254 tokens (needs its own PROBE_ROOT)")
+    ap.add_argument("--extra-long-rows", type=int, default=None, help="with --extra-long: only this many long rows (smallest hash)")
     args = ap.parse_args()
     if args.compare:
         compare(*args.compare, args.show)
@@ -404,7 +408,7 @@ def main() -> None:
         marker.mkdir(parents=True, exist_ok=True)
         (marker / "probe.json").write_text(json.dumps({"reeval_of": target}) + "\n")
         return
-    run_probe(args.name, args.seed, args.epochs, args.set, args.data_src, args.extra_long)
+    run_probe(args.name, args.seed, args.epochs, args.set, args.data_src, args.extra_long, args.extra_long_rows)
 
 
 if __name__ == "__main__":
