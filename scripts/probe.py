@@ -59,10 +59,11 @@ def _rank(uids: list[str]) -> list[int]:
     return sorted(range(len(uids)), key=lambda i: hashlib.sha256(uids[i].encode()).digest())
 
 
-def build_subsets(src: Path, extra_long: bool = False, extra_long_rows: int | None = None) -> None:
+def build_subsets(src: Path, extra_long: bool = False, extra_long_rows: int | None = None,
+                  extra_long_repeat: int = 1) -> None:
     """Train subset: the ``SIZES['train']`` smallest-hash rows of at most ``SHORT_MAX_TOKENS`` tokens (on the
     standard data: all rows, so the subset is the usual one); ``extra_long`` adds the longer rows on top --
-    all of them, or the ``extra_long_rows`` smallest-hash ones."""
+    all of them, or the ``extra_long_rows`` smallest-hash ones, each ``extra_long_repeat`` times (oversampling)."""
 
     if (DATA / "manifest.json").exists():
         return
@@ -79,8 +80,8 @@ def build_subsets(src: Path, extra_long: bool = False, extra_long_rows: int | No
         long_rows = [i for i in range(len(uids)) if i not in is_short]
         if extra_long_rows is not None:
             long_rows = [long_rows[j] for j in _rank([uids[i] for i in long_rows])[:extra_long_rows]]
-        keep += long_rows
-        n_long = len(long_rows)
+        keep += long_rows * extra_long_repeat
+        n_long = len(long_rows) * extra_long_repeat
     pq.write_table(t.take(sorted(keep)), tmp / "train.parquet", row_group_size=1024)
     v = pq.read_table(src / "val.parquet")
     srcs = v["source"].to_pylist()
@@ -95,7 +96,7 @@ def build_subsets(src: Path, extra_long: bool = False, extra_long_rows: int | No
     shutil.copy(src / "vocab.json", tmp / "vocab.json")
     manifest = json.loads((src / "manifest.json").read_text())
     manifest["probe_subset"] = {"rule": "smallest sha256(uid) per split (val: per source)", "sizes": SIZES,
-                                "source": str(src), "extra_long_train_rows": n_long}
+                                "source": str(src), "extra_long_train_rows": n_long, "extra_long_repeat": extra_long_repeat}
     (tmp / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     tmp.rename(DATA)
 
@@ -154,8 +155,8 @@ def score(preds: list[list[str]], gts: list[str]) -> dict:
 
 
 def run_probe(name: str, seed: int, epochs: int, overrides: list[str], src: Path | None = None,
-              extra_long: bool = False, extra_long_rows: int | None = None) -> dict:
-    build_subsets(src or ROOT / "data" / "processed", extra_long, extra_long_rows)
+              extra_long: bool = False, extra_long_rows: int | None = None, extra_long_repeat: int = 1) -> dict:
+    build_subsets(src or ROOT / "data" / "processed", extra_long, extra_long_rows, extra_long_repeat)
     cfg = load_config(ROOT / "configs" / "base.yaml", [
         f"data.out_dir={DATA}", f"train.epochs={epochs}", "train.warmup_steps=300", "train.val_decode_samples=800",
         "train.log_every=50", "train.workers=2", *overrides])
@@ -337,6 +338,7 @@ def main() -> None:
     ap.add_argument("--extra-long", action="store_true",
                     help="train subset = the 20k short rows + every row longer than 254 tokens (needs its own PROBE_ROOT)")
     ap.add_argument("--extra-long-rows", type=int, default=None, help="with --extra-long: only this many long rows (smallest hash)")
+    ap.add_argument("--extra-long-repeat", type=int, default=1, help="with --extra-long: repeat each long row this many times")
     args = ap.parse_args()
     if args.compare:
         compare(*args.compare, args.show)
@@ -408,7 +410,8 @@ def main() -> None:
         marker.mkdir(parents=True, exist_ok=True)
         (marker / "probe.json").write_text(json.dumps({"reeval_of": target}) + "\n")
         return
-    run_probe(args.name, args.seed, args.epochs, args.set, args.data_src, args.extra_long, args.extra_long_rows)
+    run_probe(args.name, args.seed, args.epochs, args.set, args.data_src, args.extra_long, args.extra_long_rows,
+              args.extra_long_repeat)
 
 
 if __name__ == "__main__":
