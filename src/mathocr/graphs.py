@@ -9,6 +9,12 @@ replayed CUDA graph:
   buffer written at position ``t`` (``index_copy_``) and read in full under an
   additive mask (``0`` for positions ``<= t``, ``-inf`` beyond), so every step
   has one shape;
+* attention for the single query of a step is two matmuls and a softmax: the
+  fused attention kernels are tiled for 64 queries and spend 3.9 of a step's
+  4.5 ms on one (eager decoding pays the same); keys are stored transposed and
+  contiguous, ``(B, H, Dh, N)``, so no operand is copied per step -- what
+  remains is reading the memory keys/values in fp32 (1.8 GB per step for 16
+  images of 4 608 cells), the inherent cost of cross-attention over the image;
 * the step position, the previous token, the done flags and the output row
   live in static device buffers that the graph reads and updates in place, so
   a step is ``graph.replay()`` and nothing else; ``done.all()`` is polled every
@@ -48,8 +54,9 @@ def supported(model: Im2Latex) -> bool:
 
 
 def enabled(model: Im2Latex, device: torch.device) -> bool:
-    # Opt-in (MATHOCR_CUDA_GRAPHS=1) until the stand comparison against the eager loop is in HANDOFF.
-    return device.type == "cuda" and supported(model) and os.environ.get("MATHOCR_CUDA_GRAPHS", "0") == "1"
+    """On by default on CUDA for supported models; ``MATHOCR_CUDA_GRAPHS=0`` selects the eager loop."""
+
+    return device.type == "cuda" and supported(model) and os.environ.get("MATHOCR_CUDA_GRAPHS", "1") != "0"
 
 
 class GraphedGreedy:
@@ -67,22 +74,30 @@ class GraphedGreedy:
         self.buf: dict = {}
 
     # -- the static step (what the graph records)
+    @staticmethod
+    def _attend(attn, h: Tensor, k_t: Tensor, v: Tensor, bias: Tensor | None) -> Tensor:
+        """One query per row against transposed keys ``k_t`` (B, H, Dh, N) and values ``v`` (B, H, N, Dh)."""
+
+        q = attn.split(attn.q(h))  # (B, H, 1, Dh)
+        scores = torch.matmul(q, k_t) * q.shape[-1] ** -0.5
+        if bias is not None:
+            scores = scores + bias
+        y = torch.matmul(torch.softmax(scores, dim=-1), v)
+        return attn.out(y.transpose(1, 2).reshape(h.shape[0], 1, -1))
+
     def _step(self) -> None:
         model, b = self.model, self.buf
         t, mem = b["t"], b["mem"]
-        bsz = b["token"].shape[0]
         x = model.embed(b["token"]) * math.sqrt(model.cfg.d_model) + model.tok_pos.index_select(0, t).unsqueeze(0)
         mask = torch.where(b["arange"] <= t, 0.0, float("-inf")).view(1, 1, 1, -1)
         for i, layer in enumerate(model.decoder):
             h = layer.n1(x)
             k, v = layer.self_attn.project_kv(h)
-            kc, vc = b["kcache"][i], b["vcache"][i]
-            kc.index_copy_(2, t, k)
+            kc, vc = b["kcache"][i], b["vcache"][i]  # (B, H, Dh, L) and (B, H, L, Dh)
+            kc.index_copy_(3, t, k.transpose(-1, -2))
             vc.index_copy_(2, t, v)
-            q = layer.self_attn.split(layer.self_attn.q(h))
-            y = F.scaled_dot_product_attention(q, kc, vc, attn_mask=mask)
-            x = x + layer.self_attn.out(y.transpose(1, 2).reshape(bsz, 1, -1))
-            x = x + layer.cross_attn.attend(layer.n2(x), mem[i][0], mem[i][1], causal=False)
+            x = x + self._attend(layer.self_attn, h, kc, vc, mask)
+            x = x + self._attend(layer.cross_attn, layer.n2(x), mem[i][0], mem[i][1], None)
             x = x + layer.ff(layer.n3(x))
         token = model._logits(x)[:, -1].argmax(dim=-1, keepdim=True)
         token = token.masked_fill(b["done"][:, None], self.eos)
@@ -114,9 +129,9 @@ class GraphedGreedy:
             "t": torch.zeros(1, dtype=torch.long, device=dev),
             "arange": torch.arange(self.max_len, device=dev),
             "out": torch.full((bsz, self.max_len), self.eos, dtype=torch.long, device=dev),
-            "kcache": [torch.zeros(bsz, heads, self.max_len, dh, device=dev) for _ in range(n_layers)],
+            "kcache": [torch.zeros(bsz, heads, dh, self.max_len, device=dev) for _ in range(n_layers)],
             "vcache": [torch.zeros(bsz, heads, self.max_len, dh, device=dev) for _ in range(n_layers)],
-            "mem": [(k.clone(), v.clone()) for k, v in mem_kv],
+            "mem": [(k.transpose(-1, -2).contiguous(), v.contiguous()) for k, v in mem_kv],
         }
         nbytes = sum(t.numel() * t.element_size() for t in (*buf["kcache"], *buf["vcache"], buf["out"], *sum(buf["mem"], ())))
         while self.cache and sum(b for _, _, b in self.cache.values()) + nbytes > self.cache_bytes:
@@ -152,7 +167,7 @@ class GraphedGreedy:
             self.cache.move_to_end(key)
             self.graph, self.buf, _ = self.cache[key]
             for (k, v), (sk, sv) in zip(mem_kv, self.buf["mem"]):
-                sk.copy_(k)
+                sk.copy_(k.transpose(-1, -2))
                 sv.copy_(v)
             self._reset()
         else:

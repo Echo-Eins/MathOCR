@@ -6,8 +6,9 @@ deterministic kernels), so the output is a function of the image bytes only.
 ``decode_store`` batches images of identical shape for evaluation speed;
 ``tests/test_determinism.py`` measures its agreement with the canonical path.
 
-With ``MATHOCR_CUDA_GRAPHS=1`` both run the decoder step as a replayed CUDA
-graph on CUDA (``mathocr.graphs``: same kernels, static cache).
+On CUDA both run the decoder step as a replayed CUDA graph (``mathocr.graphs``:
+static cache, single-query attention as matmuls); ``MATHOCR_CUDA_GRAPHS=0``
+selects the eager loop, the reference the graphed path is compared against.
 """
 
 from __future__ import annotations

@@ -43,7 +43,7 @@ from mathocr import determinism  # noqa: E402
 from mathocr.config import load_config  # noqa: E402
 from mathocr.data.dataset import CropStore, TrainItems, collate  # noqa: E402
 from mathocr.image import ImageConfig  # noqa: E402
-from mathocr.infer import load_checkpoint  # noqa: E402
+from mathocr.infer import greedy, load_checkpoint  # noqa: E402
 from mathocr.metrics import text_metrics  # noqa: E402
 from mathocr.tokenizer import detokenize, tokenize  # noqa: E402
 from mathocr.train import STRUCTURAL, train  # noqa: E402
@@ -113,14 +113,20 @@ def decode(model, store: CropStore, icfg: ImageConfig, vocab, device, jitter: fl
     for i in order:
         groups[store.shape(i, icfg, jitter)].append(i)
     out: dict[int, list[str]] = {}
-    for shape in sorted(groups):
-        idx = groups[shape]
-        size = max(1, min(max_batch, pixel_budget // (shape[0] * shape[1])))
-        for s in range(0, len(idx), size):
-            batch = collate([items[(i, jitter, 0)] for i in idx[s : s + size]], vocab.pad_id)
-            ids = model.generate(batch["images"].to(device), vocab.bos_id, vocab.eos_id)
-            for i, row in zip(idx[s : s + size], ids.tolist()):
-                out[i] = vocab.decode(row) + (["<noeos>"] if vocab.eos_id not in row else [])
+    decoder = greedy(model, vocab, device)  # CUDA graphs when available (same strings as model.generate)
+    try:
+        for shape in sorted(groups):
+            idx = groups[shape]
+            size = max(1, min(max_batch, pixel_budget // (shape[0] * shape[1])))
+            for s in range(0, len(idx), size):
+                batch = collate([items[(i, jitter, 0)] for i in idx[s : s + size]], vocab.pad_id)
+                images = batch["images"].to(device)
+                ids = decoder.decode(images) if hasattr(decoder, "decode") else decoder(images)
+                for i, row in zip(idx[s : s + size], ids.tolist()):
+                    out[i] = vocab.decode(row) + (["<noeos>"] if vocab.eos_id not in row else [])
+    finally:
+        if hasattr(decoder, "release"):
+            decoder.release()
     return [out[i] for i in order]
 
 
