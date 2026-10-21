@@ -14,6 +14,7 @@ $ErrorActionPreference = "Stop"
 $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
 Set-Location (Resolve-Path (Join-Path $PSScriptRoot "..\.."))
 if (-not $env:VIRTUAL_ENV) { . C:\Coding\Python\envs\mathocr\activate.ps1 | Out-Null }
+$env:PYTHONPATH = "$PWD\src"  # this checkout's code, ahead of the editable install of the main repo
 $env:CUBLAS_WORKSPACE_CONFIG = ":4096:8"
 $env:PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True"
 $name = [IO.Path]::GetFileNameWithoutExtension($Config)
