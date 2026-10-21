@@ -179,6 +179,11 @@ def build(cfg: dict) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     cache = Path(os.path.expanduser(dcfg["cache_dir"]))
     max_tokens = int(dcfg["max_tokens"])
+    # Train-only length limit (default: the same).  A larger value lets real long formulas into train;
+    # val/test keep ``max_tokens``, so every evaluation split stays byte-identical.
+    train_max_tokens = int(dcfg.get("train_max_tokens") or max_tokens)
+    if train_max_tokens < max_tokens:
+        raise ValueError("data.train_max_tokens must be >= data.max_tokens")
     stats: dict[str, Counter] = {}
     splits: dict[str, Rows] = {}
 
@@ -217,9 +222,13 @@ def build(cfg: dict) -> dict:
         for (s, i, _), label in zip(unwrapped, normalized):
             if label is None:
                 continue
-            if len(tokenize(label)) > max_tokens:
-                st["dropped_too_long"] += 1
-                continue
+            n_tokens = len(tokenize(label))
+            if n_tokens > max_tokens:
+                # Never into val/test; into train only within train_max_tokens (same bucket rule as below).
+                bucket = _hash_int(formula_key(label), "oleehyo-split") % 1000
+                if n_tokens > train_max_tokens or bucket < dcfg["oleehyo_val_permille"] + dcfg["oleehyo_test_permille"]:
+                    st["dropped_too_long"] += 1
+                    continue
             key = formula_key(label)
             if key in seen:
                 st["dropped_duplicate"] += 1
@@ -247,6 +256,7 @@ def build(cfg: dict) -> dict:
             ol_split["train"] = {k: ol_split["train"][k] for k in sorted(order[:size])}
         for split in ("train", "val", "test"):
             st[f"selected_{split}"] = len(ol_split[split])
+        st["selected_train_longer_than_max_tokens"] = sum(len(tokenize(l)) > max_tokens for l in ol_split["train"].values())
 
         # 3. Analyze images.
         rows_val, rows_train = Rows(), Rows()
@@ -265,7 +275,7 @@ def build(cfg: dict) -> dict:
                 st["dropped_empty"] += 1
             elif "[object" in label:  # broken upstream normalization
                 st["dropped_object_object"] += 1
-            elif len(tokenize(label)) > max_tokens:
+            elif len(tokenize(label)) > train_max_tokens:
                 st["dropped_too_long"] += 1
             elif formula_key(label) in eval_keys:
                 st["dropped_in_eval_sets"] += 1
@@ -353,8 +363,10 @@ def _leakage(tables: dict[str, pa.Table]) -> dict[str, int]:
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--config", type=Path, required=True)
+    ap.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE",
+                    help="config overrides, e.g. data.out_dir=data/processed_long data.train_max_tokens=510")
     args = ap.parse_args(argv)
-    manifest = build(load_config(args.config))
+    manifest = build(load_config(args.config, args.set))
     print(json.dumps({k: manifest[k] for k in ("filters", "splits", "vocab", "leakage_check")}, indent=2))
 
 

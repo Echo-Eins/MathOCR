@@ -13,6 +13,7 @@ data:
   oleehyo_val_permille: 15
   oleehyo_test_permille: 15
   max_tokens: 254          # model.max_len - BOS - EOS
+  train_max_tokens: null   # train-only limit (default = max_tokens); val/test always keep max_tokens
   min_token_freq: 10
   min_fit_ratio: 0.6       # drop train images that must shrink below 0.6x glyph target to fit
   workers: 4

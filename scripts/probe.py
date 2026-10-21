@@ -52,20 +52,33 @@ PROBE_ROOT = Path(os.environ.get("PROBE_ROOT", "/mnt/SSD/MathOCR/probe"))
 DATA = PROBE_ROOT / "data20k"
 SCALES = (0.7, 1.4)
 SIZES = {"train": 20000, "val_im2latex": 400, "val_oleehyo": 400, "ood_cpe": 300, "ood_sce": 300, "ood_spe": 300}
+SHORT_MAX_TOKENS = 254  # the standard data's limit; longer rows exist only in a data.train_max_tokens build
 
 
 def _rank(uids: list[str]) -> list[int]:
     return sorted(range(len(uids)), key=lambda i: hashlib.sha256(uids[i].encode()).digest())
 
 
-def build_subsets(src: Path) -> None:
+def build_subsets(src: Path, extra_long: bool = False) -> None:
+    """Train subset: the ``SIZES['train']`` smallest-hash rows of at most ``SHORT_MAX_TOKENS`` tokens (on the
+    standard data: all rows, so the subset is the usual one); ``extra_long`` adds every longer row on top."""
+
     if (DATA / "manifest.json").exists():
         return
     tmp = DATA.with_suffix(".tmp")
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
     t = pq.read_table(src / "train.parquet")
-    pq.write_table(t.take(sorted(_rank(t["uid"].to_pylist())[: SIZES["train"]])), tmp / "train.parquet", row_group_size=1024)
+    uids = t["uid"].to_pylist()
+    short = [i for i, label in enumerate(t["label"].to_pylist()) if len(label.split()) <= SHORT_MAX_TOKENS]
+    keep = [short[j] for j in _rank([uids[i] for i in short])[: SIZES["train"]]]
+    n_long = 0
+    if extra_long:
+        is_short = set(short)
+        long_rows = [i for i in range(len(uids)) if i not in is_short]
+        keep += long_rows
+        n_long = len(long_rows)
+    pq.write_table(t.take(sorted(keep)), tmp / "train.parquet", row_group_size=1024)
     v = pq.read_table(src / "val.parquet")
     srcs = v["source"].to_pylist()
     keep = []
@@ -78,7 +91,8 @@ def build_subsets(src: Path) -> None:
         pq.write_table(o.take(sorted(_rank(o["uid"].to_pylist())[: SIZES[split]])), tmp / f"{split}.parquet")
     shutil.copy(src / "vocab.json", tmp / "vocab.json")
     manifest = json.loads((src / "manifest.json").read_text())
-    manifest["probe_subset"] = {"rule": "smallest sha256(uid) per split (val: per source)", "sizes": SIZES}
+    manifest["probe_subset"] = {"rule": "smallest sha256(uid) per split (val: per source)", "sizes": SIZES,
+                                "source": str(src), "extra_long_train_rows": n_long}
     (tmp / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     tmp.rename(DATA)
 
@@ -136,9 +150,9 @@ def score(preds: list[list[str]], gts: list[str]) -> dict:
     return {"em": m["exact_match"], "edit": m["edit_distance"], "bleu": m["bleu"], **character(preds, gts)}
 
 
-def run_probe(name: str, seed: int, epochs: int, overrides: list[str]) -> dict:
-    src = ROOT / "data" / "processed"
-    build_subsets(src)
+def run_probe(name: str, seed: int, epochs: int, overrides: list[str], src: Path | None = None,
+              extra_long: bool = False) -> dict:
+    build_subsets(src or ROOT / "data" / "processed", extra_long)
     cfg = load_config(ROOT / "configs" / "base.yaml", [
         f"data.out_dir={DATA}", f"train.epochs={epochs}", "train.warmup_steps=300", "train.val_decode_samples=800",
         "train.log_every=50", "train.workers=2", *overrides])
@@ -316,6 +330,9 @@ def main() -> None:
     ap.add_argument("--compare", nargs=2, metavar=("A", "B"))
     ap.add_argument("--show", type=int, default=4)
     ap.add_argument("--eval-only", action="store_true", help="re-run the evaluation protocol on a finished probe")
+    ap.add_argument("--data-src", type=Path, default=None, help="processed data to subset (default: data/processed)")
+    ap.add_argument("--extra-long", action="store_true",
+                    help="train subset = the 20k short rows + every row longer than 254 tokens (needs its own PROBE_ROOT)")
     args = ap.parse_args()
     if args.compare:
         compare(*args.compare, args.show)
@@ -387,7 +404,7 @@ def main() -> None:
         marker.mkdir(parents=True, exist_ok=True)
         (marker / "probe.json").write_text(json.dumps({"reeval_of": target}) + "\n")
         return
-    run_probe(args.name, args.seed, args.epochs, args.set)
+    run_probe(args.name, args.seed, args.epochs, args.set, args.data_src, args.extra_long)
 
 
 if __name__ == "__main__":

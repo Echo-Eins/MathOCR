@@ -5,6 +5,9 @@ through ``image.prepare`` and is decoded alone (batch of one, fp32,
 deterministic kernels), so the output is a function of the image bytes only.
 ``decode_store`` batches images of identical shape for evaluation speed;
 ``tests/test_determinism.py`` measures its agreement with the canonical path.
+
+With ``MATHOCR_CUDA_GRAPHS=1`` both run the decoder step as a replayed CUDA
+graph on CUDA (``mathocr.graphs``: same kernels, static cache).
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from pathlib import Path
 import torch
 from PIL import Image
 
+from mathocr import graphs
 from mathocr.data.dataset import CropStore, ShapeBatchSampler, TrainItems, collate
 from mathocr.image import ImageConfig, prepare, to_tensor
 from mathocr.model import Im2Latex, ModelConfig
@@ -35,6 +39,15 @@ def _to_strings(ids: torch.Tensor, vocab: Vocab) -> list[str]:
     return [detokenize(vocab.decode(row)) for row in ids.tolist()]
 
 
+def greedy(model: Im2Latex, vocab: Vocab, device: torch.device):
+    """``images -> ids`` for greedy decoding: the graphed step on CUDA, the eager loop otherwise.
+    Call ``.release()`` (if present) when done to free the graph's buffers."""
+
+    if graphs.enabled(model, device):
+        return graphs.GraphedGreedy(model, vocab.bos_id, vocab.eos_id)
+    return lambda images: model.generate(images, vocab.bos_id, vocab.eos_id)
+
+
 @torch.no_grad()
 def decode_store(model: Im2Latex, store: CropStore, image_cfg: ImageConfig, vocab: Vocab,
                  device: torch.device, pixel_budget: int, max_batch: int,
@@ -44,12 +57,17 @@ def decode_store(model: Im2Latex, store: CropStore, image_cfg: ImageConfig, voca
     model.eval()
     sampler = ShapeBatchSampler(store, image_cfg, pixel_budget, max_batch, seed=0, train=False, indices=indices)
     items = TrainItems(store, image_cfg, aug_cfg=None, seed=0)
+    decoder = greedy(model, vocab, device)
     out: dict[int, str] = {}
-    for batch_keys in sampler:
-        batch = collate([items[k] for k in batch_keys], vocab.pad_id)
-        ids = model.generate(batch["images"].to(device), vocab.bos_id, vocab.eos_id)
-        for i, s in zip(batch["index"].tolist(), _to_strings(ids, vocab)):
-            out[i] = s
+    try:
+        for batch_keys in sampler:
+            batch = collate([items[k] for k in batch_keys], vocab.pad_id)
+            ids = decoder.decode(batch["images"].to(device)) if hasattr(decoder, "decode") else decoder(batch["images"].to(device))
+            for i, s in zip(batch["index"].tolist(), _to_strings(ids, vocab)):
+                out[i] = s
+    finally:
+        if hasattr(decoder, "release"):
+            decoder.release()
     order = range(len(store)) if indices is None else indices
     return [out[i] for i in order]
 
@@ -60,8 +78,14 @@ def predict_images(model: Im2Latex, images: Sequence[Image.Image], image_cfg: Im
     """Canonical path: one image at a time."""
 
     model.eval()
+    decoder = greedy(model, vocab, device)
     out = []
-    for image in images:
-        x = to_tensor(prepare(image, image_cfg)).unsqueeze(0).to(device)
-        out.extend(_to_strings(model.generate(x, vocab.bos_id, vocab.eos_id), vocab))
+    try:
+        for image in images:
+            x = to_tensor(prepare(image, image_cfg)).unsqueeze(0).to(device)
+            ids = decoder.decode(x) if hasattr(decoder, "decode") else decoder(x)
+            out.extend(_to_strings(ids, vocab))
+    finally:
+        if hasattr(decoder, "release"):
+            decoder.release()
     return out

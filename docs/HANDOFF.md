@@ -131,6 +131,9 @@ Sysmem Fallback», иначе переполнение видеопамяти м
 | `src/mathocr/aas_kernel.py` | Triton-ядро AAS (детерминированный обратный проход в форме сбора) |
 | `src/mathocr/train.py` | + EMA, BTTR, token dropout, `init_from`, мягкие цели (дистилляция), доля клиппинга в логе |
 | `src/mathocr/data/dataset.py` | + склейка многострочных формул (`augment.p_stack`) |
+| `src/mathocr/data/build.py` | + `data.train_max_tokens` (длинные формулы только в train; val/test не меняются), `--set` |
+| `src/mathocr/attn_kernel.py` | Triton-внимание с dropout и детерминированным backward (`model.attn_kernel=triton`) |
+| `src/mathocr/graphs.py` | жадное декодирование как CUDA-граф: статический KV-кэш, LRU графов по (батч, H, W) под бюджетом памяти; opt-in `MATHOCR_CUDA_GRAPHS=1` (см. раздел 8) |
 | `scripts/probe.py` | стенд проб (20k × 4 эпохи) и типы заданий очереди |
 | `scripts/decode_study.py` | жадное / лучи / ограничения / консенсус масштабов / R2L / счёт |
 | `scripts/knn_decode.py` | kNN-память декодера (опц. PCA-ключи, полный train) |
@@ -379,10 +382,28 @@ val EM на двух моделях, edit на OOD −0,02…−0,04.
 (мягкие цели, NN = τ×100), `knnp128_<run>`, `fknn_<final run>`.
 История всех проб — `scripts/ops/probe_jobs_history.txt`.
 
+Стенд с длинными формулами: `python -m mathocr.data.build --config configs/base.yaml --set
+data.out_dir=data/processed_long data.train_max_tokens=510` (val/test/OOD побитово те же, в train
+входят 1 591 формула длиннее 254 токенов), затем `PROBE_ROOT=.../probe_long`,
+`scripts/probe.py ... --data-src data/processed_long --extra-long` (train-подмножество = те же 20k
+коротких + все длинные строки).
+
 **Скрипты оценки.** `python -m mathocr.evaluate --run-dir runs/X` (тесты +
 проверка канонического пути), `python -m mathocr.cdm --run-dir runs/X`,
 `python -m mathocr.aggregate runs/A runs/B runs/C --out results/Y`,
 `python -m mathocr.predict --checkpoint ... img.png`.
+
+**CUDA-графы в декодировании** (`src/mathocr/graphs.py`, `MATHOCR_CUDA_GRAPHS=1`). Eager-цикл
+`generate` запускает ≈150 мелких ядер на токен — на этом стеке это ≈10 мс чистых накладных расходов
+на шаг. Графовый путь записывает тот же шаг теми же ядрами (без inductor): KV-кэш каждого слоя —
+статический буфер `(B, H, L, Dh)`, запись в позицию `t` через `index_copy_`, чтение целиком под
+аддитивной маской (0 до `t`, −inf дальше); позиция, предыдущий токен, флаги EOS и строка вывода —
+статические буферы на устройстве, шаг = `graph.replay()`, `done.all()` опрашивается раз в 4 шага.
+Один граф на ключ (B, H, W); графы живут в LRU-кэше под бюджетом байтов (по умолчанию 2 ГиБ:
+при больших батчах это 1–2 ключа, при одиночных картинках — все встреченные формы); все захваты
+делят один пул памяти. Проверено на чекпойнте контроля: 0 расхождений строк из 1 150 (val 800,
+CPE 300, 50 одиночных) с eager, повтор побитово тот же; `tests/test_graphs.py`. Включается по
+умолчанию после замера скорости на свободной GPU (пока GPU была занята пробой: ×2,4 на батчах).
 
 **Память модели.** 42,9 M параметров (164 МБ fp32); инференс одной формулы
 0,26–0,32 ГБ GPU; обучение финального конфига — пик тензоров 5,6 ГБ.
