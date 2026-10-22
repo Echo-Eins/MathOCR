@@ -16,16 +16,15 @@ Set-Location (Resolve-Path (Join-Path $PSScriptRoot "..\.."))
 if (-not $env:VIRTUAL_ENV) { . C:\Coding\Python\envs\mathocr\activate.ps1 | Out-Null }
 $env:PYTHONPATH = "$PWD\src"  # this checkout's code, ahead of the editable install of the main repo
 $env:CUBLAS_WORKSPACE_CONFIG = ":4096:8"
+# Expandable segments for training and evaluation: without them the cache fragments over the many batch
+# shapes and, with the driver's sysmem fallback, spills into system RAM (evaluation 3x slower).
+$env:PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True"
 $name = [IO.Path]::GetFileNameWithoutExtension($Config)
 foreach ($seed in $Seeds) {
     $run = "runs\${name}_s$seed"
     New-Item -ItemType Directory -Force $run | Out-Null
     "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') seed ${seed}: train"
-    # expandable segments only while training: with CUDA graphs in evaluation they exhausted the driver's
-    # address-space reservations on Windows (cuMemAddressReserve out of memory, HANDOFF section 7)
-    $env:PYTORCH_CUDA_ALLOC_CONF = "expandable_segments:True"
     python -m mathocr.train --config $Config --seed $seed --run-dir $run --resume --set train.workers=$Workers
-    Remove-Item Env:PYTORCH_CUDA_ALLOC_CONF -ErrorAction SilentlyContinue
     if ($LASTEXITCODE -ne 0) { throw "train failed seed $seed" }
     "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') seed ${seed}: evaluate"
     python -m mathocr.evaluate --run-dir $run
