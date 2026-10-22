@@ -81,3 +81,32 @@ def test_variants_fall_back_to_eager(tiny_data):
                                  n_heads=4, enc_layers=1, dec_layers=2, max_len=12, fovea=True, fovea_layer=1))
     assert graphs.supported(plain) and not graphs.supported(fovea)
     assert not graphs.enabled(plain, torch.device("cpu"))
+
+
+@cuda
+@pytest.mark.parametrize("failures", [1, 2])
+def test_failed_capture_recovers(tiny_data, failures):
+    """A capture that runs out of memory (as cuMemAddressReserve did on Windows) is retried with a fresh pool;
+    a second failure decodes eagerly; either way the ids are the eager ones and later captures work."""
+
+    from mathocr.graphs import GraphedGreedy
+
+    vocab = Vocab.load(tiny_data / "vocab.json")
+    model = _model(vocab)
+    x = torch.rand(2, 1, 64, 96, device="cuda")
+    ref = model.generate(x, vocab.bos_id, vocab.eos_id)
+    g = GraphedGreedy(model, vocab.bos_id, vocab.eos_id)
+    real, left = g._step, [failures]
+
+    def flaky():
+        if torch.cuda.is_current_stream_capturing() and left[0] > 0:
+            left[0] -= 1
+            raise RuntimeError("CUDA driver error: out of memory")
+        real()
+
+    g._step = flaky
+    out = g.decode(x)
+    assert not torch.cuda.is_current_stream_capturing()
+    assert torch.equal(out[:, : ref.shape[1]], ref) and g.eager_fallbacks == (failures == 2)
+    g._step = real
+    assert torch.equal(g.decode(x)[:, : ref.shape[1]], ref) and (2, 64, 96) in g.cache

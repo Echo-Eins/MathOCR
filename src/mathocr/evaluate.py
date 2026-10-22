@@ -67,7 +67,9 @@ def evaluate(run_dir: Path, data_dir: Path, splits: list[str], checkpoint: str, 
         metrics = text_metrics(preds, store.labels)
         if check_canonical:
             idx = cdm_subset(store.uids, check_canonical)
-            single = [decode_store(model, store, icfg, vocab, device, pixel_budget, 1, [i])[0] for i in idx]
+            # batches of one, i.e. every image decoded alone (the canonical path), through one decoder: its
+            # graphs are reused per shape instead of one decoder (and graph memory pool) per image
+            single = decode_store(model, store, icfg, vocab, device, pixel_budget, 1, idx)
             metrics["canonical_checked"] = len(idx)
             metrics["canonical_mismatch"] = sum(single[k] != preds[i] for k, i in enumerate(idx))
         results["splits"][split] = metrics

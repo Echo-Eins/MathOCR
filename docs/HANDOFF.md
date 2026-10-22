@@ -71,10 +71,9 @@ test_oleehyo 6 620, OOD UniMER-Test (CPE 5 921, SCE 4 742, SPE 6 762, HWE 6 332)
 (im2latex EM 0,539 / edit 0,048, oleehyo 0,580 / 0,038 против 0,542 / 0,047 и 0,582 / 0,037).
 CPE по длине эталона: 101–254 — 0,291, **255–400 — 0,292** (раньше упирались в потолок), 401–510 —
 0,336 (23 % упираются в 511), > 510 — 0,497 (72 %): следующий кандидат — `max_len 768` (A3).
-**Не досчитано:** `mathocr.evaluate` упал с исключением на CPE после записи предсказаний (текст
-съел PowerShell; вероятно, проверка канонического пути); SCE/SPE/HWE и CDM ещё нет. Сначала —
-перезапуск оценки в worktree с перехватом stderr, затем CDM (Docker требует включить компонент
-«Платформа виртуальной машины», раздел 7). Подробности — `runs/final_v2_s1/NOTE.txt`.
+**Оценка** упала на проверке канонического пути CPE (`cuMemAddressReserve` out of memory при
+`expandable_segments`, раздел 7; исправлено) и перезапущена без этого режима; CDM — после
+перезагрузки (Docker, раздел 7). Подробности — `runs/final_v2_s1/NOTE.txt`.
 
 ### 2026-10-21: второе устройство (Windows 11, RTX 5090 Laptop 24 ГБ)
 - Воркспейс `C:\Coding\Python\envs\mathocr` (`activate.ps1`, `check_env.py`, `requirements.lock.txt`,
@@ -481,9 +480,15 @@ val EM на двух моделях, edit на OOD −0,02…−0,04.
   Перед долгими прогонами: не гасить экран от сети (`powercfg /change monitor-timeout-ac 0`) или
   отключить энергосбережение GPU в Armoury Crate / панели NVIDIA; проверка — `nvidia-smi -q -d POWER`.
 - Docker Desktop на этом ноутбуке не стартует: `Virtual Machine Platform not enabled` (лог
-  `%LOCALAPPDATA%\Docker\log\host\com.docker.backend.exe.log`). `wsl --install --no-distribution`
-  поставил пакет WSL, но компонент не включил. Нужно от администратора
-  `dism /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart` и перезагрузка.
+  `%LOCALAPPDATA%\Docker\log\host\com.docker.backend.exe.log`). Компонент поставлен
+  (`wsl --install --no-distribution`), но ждёт перезагрузки (`RebootPending` в CBS), а в Windows
+  включён быстрый запуск: «Завершение работы» гибернирует ядро и отложенные компоненты не применяет
+  (последняя настоящая загрузка — 2026-10-21 02:34). Нужна именно «Перезагрузка».
+- Оценка на Windows: `expandable_segments` + CUDA-графы → `CUDA driver error: out of memory` из
+  `cuMemAddressReserve` на проверке канонического пути (каждое из 200 одиночных декодирований
+  заводило свой декодер и свой пул графа, резервы адресов копились). Исправлено: проверка — один
+  `decode_store` с батчем 1; неудачный захват графа повторяется с новым пулом, потом eager;
+  `final_lane.ps1` включает `expandable_segments` только на обучение.
 - `final_lane.ps1`: `$ErrorActionPreference = "Stop"` в PowerShell 5.1 превращает первую строку stderr
   python в ошибку и обрывает скрипт без остального traceback — при сбое запускать шаг вручную с
   `2> файл`.

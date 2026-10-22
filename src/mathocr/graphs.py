@@ -72,6 +72,7 @@ class GraphedGreedy:
         self.cache: OrderedDict[tuple[int, int, int], tuple[torch.cuda.CUDAGraph, dict, int]] = OrderedDict()
         self.graph: torch.cuda.CUDAGraph | None = None
         self.buf: dict = {}
+        self.eager_fallbacks = 0  # decodes that ran eagerly because a capture ran out of memory twice
 
     # -- the static step (what the graph records)
     @staticmethod
@@ -118,6 +119,7 @@ class GraphedGreedy:
     def release(self) -> None:
         self.cache.clear()
         self.graph, self.buf = None, {}
+        self.pool = torch.cuda.graph_pool_handle()  # the old pool dies with its graphs; never reuse it
 
     def _capture(self, key: tuple[int, int, int], mem_kv: list[tuple[Tensor, Tensor]]) -> None:
         model = self.model
@@ -148,8 +150,18 @@ class GraphedGreedy:
         torch.cuda.synchronize()  # nothing pending while recording (torch.cuda.graph does this plus a gc.collect)
         with torch.cuda.stream(s):
             g.capture_begin(pool=self.pool)
-            self._step()
-            g.capture_end()
+            recorded = False
+            try:
+                self._step()
+                recorded = True
+            finally:
+                if recorded:
+                    g.capture_end()
+                else:  # a launch failed mid-capture: still end it, so the stream is usable for the retry
+                    try:
+                        g.capture_end()
+                    except RuntimeError:
+                        pass
         torch.cuda.synchronize()
         self._reset()
         self.cache[key] = (g, buf, nbytes)
@@ -171,7 +183,23 @@ class GraphedGreedy:
                 sv.copy_(v)
             self._reset()
         else:
-            self._capture(key, mem_kv)
+            try:
+                self._capture(key, mem_kv)
+            except RuntimeError as e:  # e.g. the driver refusing to reserve address space for a new pool
+                if "out of memory" not in str(e).lower():
+                    raise
+                self.release()
+                torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+                try:
+                    self._capture(key, mem_kv)
+                except RuntimeError as e2:
+                    if "out of memory" not in str(e2).lower():
+                        raise
+                    self.release()
+                    torch.cuda.empty_cache()
+                    self.eager_fallbacks += 1
+                    return model.generate(images, self.bos, self.eos, self.max_len + 1)  # same strings, slower
         steps = 0
         for step in range(self.max_len):
             self.graph.replay()
