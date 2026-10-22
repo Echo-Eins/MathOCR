@@ -13,4 +13,13 @@ fixed), then a spill into system RAM without expandable segments (HANDOFF sectio
   ood_sce       EM 0.1748 edit 0.4256 BLEU 0.2715  (63 runaways = 1.3% of samples, 25% of predicted tokens; 0.422 without them)
   ood_spe       EM 0.1878 edit 0.1900 BLEU 0.7393
   ood_hwe       EM 0.0005 edit 0.8481 BLEU 0.0131
-CDM pending: Docker needs a real restart (Fast Startup, HANDOFF section 7).
+The numbers above are now in eval_untrimmed/ (with their CDM, cdm.json: CPE 0.812, SCE 0.814, SPE 0.937,
+HWE 0.224, test_im2latex 0.996, test_oleehyo 0.994).
+eval/ = re-evaluation 2026-10-22 with the code of commit a15b0af: decodes that never emitted EOS lose their
+looping tail (infer.trim_runaway); every terminated decode is unchanged. Canonical path 0/200 on every split.
+  test_im2latex EM 0.5389 edit 0.0478 BLEU 0.9270 CDM 0.996 (=1 0.966)
+  test_oleehyo  EM 0.5804 edit 0.0376 BLEU 0.9497 CDM 0.994 (=1 0.915)
+  ood_cpe       EM 0.0059 edit 0.2991 BLEU 0.6691 CDM 0.814 (=1 0.140)
+  ood_sce       EM 0.1748 edit 0.4233 BLEU 0.4212 CDM 0.818 (=1 0.469)
+  ood_spe       EM 0.1878 edit 0.1893 BLEU 0.7617 CDM 0.938 (=1 0.588)
+  ood_hwe       EM 0.0005 edit 0.8307 BLEU 0.0384 CDM 0.232 (=1 0.009)

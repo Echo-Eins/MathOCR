@@ -1,24 +1,24 @@
 {
   "ood_cpe": {
-    "cdm": 0.812,
+    "cdm": 0.814,
     "cdm_exp_rate": 0.14,
     "scored": 1000,
     "submitted": 1000
   },
   "ood_hwe": {
-    "cdm": 0.224,
+    "cdm": 0.232,
     "cdm_exp_rate": 0.009,
     "scored": 1000,
     "submitted": 1000
   },
   "ood_sce": {
-    "cdm": 0.814,
+    "cdm": 0.818,
     "cdm_exp_rate": 0.469,
     "scored": 1000,
     "submitted": 1000
   },
   "ood_spe": {
-    "cdm": 0.937,
+    "cdm": 0.938,
     "cdm_exp_rate": 0.588,
     "scored": 1000,
     "submitted": 1000
