@@ -86,3 +86,5 @@ win_v2_e5_s1|1|train.optimizer=muon train.lr=6.0e-4 model.enc_stride=8x4 image.t
 win_v2_real460_s1|1|train.optimizer=muon train.lr=6.0e-4 model.enc_stride=8x4 image.target_glyph_px=18.0 model.attn_kernel=triton image.max_h=384 image.max_w=1536 model.max_len=512 augment.p_stack=0.1 augment.stack_style=rl  (PROBE_ROOT=D:\MathOCR\probe_long460, --data-src data/processed_long --extra-long --extra-long-rows 460)
 win_v2_stack02_s1|1|train.optimizer=muon train.lr=6.0e-4 model.enc_stride=8x4 image.target_glyph_px=18.0 model.attn_kernel=triton image.max_h=384 image.max_w=1536 model.max_len=512 augment.p_stack=0.2 augment.stack_style=rl
 win_v2_rows_s1|1|train.optimizer=muon train.lr=6.0e-4 model.enc_stride=8x4 image.target_glyph_px=18.0 model.attn_kernel=triton image.max_h=384 image.max_w=1536 model.max_len=512 augment.p_stack=0.1 augment.stack_style=rows
+win_adamw_s8x4_g18_s1|1|train.optimizer=adamw train.lr=3.0e-4 model.enc_stride=8x4 image.target_glyph_px=18.0 model.attn_kernel=triton
+win_m_lr6_e1_s1|1|train.optimizer=muon train.lr=6.0e-4 model.enc_stride=8x4 image.target_glyph_px=18.0 model.attn_kernel=triton  (--epochs 1)

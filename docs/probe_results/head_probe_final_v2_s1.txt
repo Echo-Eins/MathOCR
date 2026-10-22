@@ -1,0 +1,6 @@
+latents: train 863003, val 129108, SPE 88687 tokens
+tied head errors: val 1.46% of tokens, SPE 6.52%
+tied    params  0.31M | train CE 0.1353 acc 0.9860 | val CE 0.1392 acc 0.9854 (on tied-wrong 0.000) | SPE CE 0.3581 acc 0.9348 (on tied-wrong 0.000)
+linear  params  0.31M | train CE 0.1478 acc 0.9873 | val CE 0.1565 acc 0.9857 (on tied-wrong 0.062) | SPE CE 0.3800 acc 0.9340 (on tied-wrong 0.026)
+cells   params  5.73M | train CE 0.1472 acc 0.9875 | val CE 0.1564 acc 0.9857 (on tied-wrong 0.066) | SPE CE 0.3803 acc 0.9339 (on tied-wrong 0.028)
+mlp     params  2.62M | train CE 0.1453 acc 0.9879 | val CE 0.1564 acc 0.9858 (on tied-wrong 0.078) | SPE CE 0.3828 acc 0.9335 (on tied-wrong 0.035)
