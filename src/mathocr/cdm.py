@@ -36,7 +36,10 @@ def run_cdm(run_dir: Path, splits: list[str] | None, cpus: int, keep: bool) -> d
         cmd = ["docker", "run", "--rm", f"--cpus={cpus}", *user,
                "-e", "HOME=/tmp", "-v", f"{eval_dir}:/work", IMAGE,
                "-i", f"/work/{f.name}", "-o", "/work/cdm_work", "-p", str(cpus)]
-        subprocess.run(["nice", "-n", "19", *cmd] if shutil.which("nice") else cmd, check=True)
+        # nice only on POSIX: on Windows a `nice` on PATH is MSYS (Git for Windows), whose argument
+        # conversion rewrites the container paths (/work/... -> C:/Program Files/Git/work/...)
+        nice = ["nice", "-n", "19"] if os.name == "posix" and shutil.which("nice") else []
+        subprocess.run([*nice, *cmd], check=True)
         # evaluation.py names its output dir after the input basename up to the first dot.
         res = json.loads((out / split / "metrics_res.json").read_text())
         details = res.get("details", {})
