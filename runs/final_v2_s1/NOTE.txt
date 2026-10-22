@@ -1,0 +1,13 @@
+final_v2 (configs/final_v2.yaml), seed 1, trained 2026-10-22 on the RTX 5090 laptop from the clean worktree
+C:\Coding\Python\MathOCR_final at commit 2dbff85; checkpoints stay there (runs\final_v2_s1\checkpoints).
+Training complete: 5 epochs, 72 704 steps; val EM 0.539 / edit 0.0454 (best = epoch 4). The laptop was shut down
+in epoch 3 once; the partial epoch is in log_killed_partial_epoch.jsonl, --resume continued from the epoch-2
+boundary.
+Evaluation INCOMPLETE: mathocr.evaluate raised an exception on ood_cpe after writing its predictions (during the
+canonical single-image check, presumably; PowerShell swallowed the traceback). Numbers so far:
+  test_im2latex EM 0.5389 edit 0.0479 BLEU 0.9269 (canonical mismatch 0/200)
+  test_oleehyo  EM 0.5804 edit 0.0377 BLEU 0.9498 (canonical mismatch 0/200)
+  ood_cpe       EM 0.0059 edit 0.3038 BLEU 0.6274 (computed from eval/ood_cpe.jsonl in the worktree)
+SCE/SPE/HWE and CDM are not computed yet. To finish: in the worktree, run
+  python -m mathocr.evaluate --run-dir runs/final_v2_s1  (capture stderr: ... 2> eval.err)
+fix the error, then CDM once Docker works (Virtual Machine Platform must be enabled, HANDOFF section 7).
