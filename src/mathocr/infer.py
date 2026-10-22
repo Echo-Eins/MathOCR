@@ -36,8 +36,27 @@ def load_checkpoint(path: Path, device: torch.device) -> tuple[Im2Latex, Vocab, 
     return model, Vocab(ckpt["vocab"]), ImageConfig(**ckpt["image_config"]), ckpt
 
 
+def trim_runaway(tokens: list[str], max_period: int = 16, min_repeats: int = 3) -> list[str]:
+    r"""A decode that never emitted EOS usually ends in a loop (``\! \! \! ...`` on screenshots): drop the
+    periodic tail (period <= ``max_period`` tokens, >= ``min_repeats`` copies), keeping one copy.  Applied only
+    to decodes without EOS, so every normally terminated output is untouched."""
+
+    n, best = len(tokens), len(tokens)
+    for per in range(1, max_period + 1):
+        s = n - per
+        while s - per >= 0 and tokens[s - per : s] == tokens[s : s + per]:
+            s -= per
+        if n - s >= min_repeats * per:
+            best = min(best, s + per)
+    return tokens[:best]
+
+
 def _to_strings(ids: torch.Tensor, vocab: Vocab) -> list[str]:
-    return [detokenize(vocab.decode(row)) for row in ids.tolist()]
+    out = []
+    for row in ids.tolist():
+        tokens = vocab.decode(row)
+        out.append(detokenize(tokens if vocab.eos_id in row else trim_runaway(tokens)))
+    return out
 
 
 def greedy(model: Im2Latex, vocab: Vocab, device: torch.device):

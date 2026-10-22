@@ -110,3 +110,13 @@ def test_failed_capture_recovers(tiny_data, failures):
     assert torch.equal(out[:, : ref.shape[1]], ref) and g.eager_fallbacks == (failures == 2)
     g._step = real
     assert torch.equal(g.decode(x)[:, : ref.shape[1]], ref) and (2, 64, 96) in g.cache
+
+
+def test_trim_runaway_only_cuts_periodic_tails():
+    from mathocr.infer import trim_runaway
+
+    loop = "x = 1".split() + ["\!"] * 40
+    assert trim_runaway(loop) == "x = 1 \!".split()
+    assert trim_runaway("a b c d a b c d a b c d a b c d".split()) == "a b c d".split()
+    assert trim_runaway("x + y = 2".split()) == "x + y = 2".split()  # no tail repeated 3 times
+    assert trim_runaway("a \, \,".split()) == "a \, \,".split()  # two copies are not a loop
