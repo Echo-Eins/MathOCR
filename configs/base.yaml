@@ -55,6 +55,8 @@ model:
   fovea_size: 8
   fovea_base: 2.0
   fovea_channels: 64
+  head: tied               # tied | cells (an MLP per vocabulary cell + all-to-all cell links) | cells_ml | cells_vis
+  head_k: 16               # hidden units per vocabulary cell
 
 augment:
   scale_log_range: 0.29    # glyph-size jitter exp(U(-r, r)) = 0.75x .. 1.34x

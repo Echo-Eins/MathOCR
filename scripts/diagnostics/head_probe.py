@@ -114,22 +114,23 @@ def score(f, z, y, wrong):
     return ce, acc.mean().item(), acc[wrong].mean().item()
 
 
-zt, yt = latents("train", 12000)
-zv, yv = latents("val", 2000)
-zs, ys = latents("ood_spe", 1500)
-print(f"latents: train {len(yt)}, val {len(yv)}, SPE {len(ys)} tokens", flush=True)
-tied = lambda z: F.linear(z, model.embed.weight)  # noqa: E731
-heads = {"tied": tied}
-heads["linear"] = fit(LinearHead(), zt, yt)
-heads["cells"] = fit(Cells(), zt, yt)
-heads["mlp"] = fit(MLPHead(), zt, yt)
-with torch.no_grad():
-    wv = (tied(zv.float()).argmax(-1) != yv)
-    ws = (tied(zs.float()).argmax(-1) != ys)
-print(f"tied head errors: val {wv.float().mean().item() * 100:.2f}% of tokens, SPE {ws.float().mean().item() * 100:.2f}%")
-for name, f in heads.items():
-    n_par = sum(p.numel() for p in f.parameters()) if isinstance(f, nn.Module) else V * d
-    tr = score(f, zt[:200000], yt[:200000], torch.ones(min(200000, len(yt)), dtype=torch.bool, device=dev))
-    va, sp = score(f, zv, yv, wv), score(f, zs, ys, ws)
-    print(f"{name:7} params {n_par / 1e6:5.2f}M | train CE {tr[0]:.4f} acc {tr[1]:.4f} | val CE {va[0]:.4f} acc {va[1]:.4f} "
-          f"(on tied-wrong {va[2]:.3f}) | SPE CE {sp[0]:.4f} acc {sp[1]:.4f} (on tied-wrong {sp[2]:.3f})", flush=True)
+if __name__ == "__main__":
+    zt, yt = latents("train", 12000)
+    zv, yv = latents("val", 2000)
+    zs, ys = latents("ood_spe", 1500)
+    print(f"latents: train {len(yt)}, val {len(yv)}, SPE {len(ys)} tokens", flush=True)
+    tied = lambda z: F.linear(z, model.embed.weight)  # noqa: E731
+    heads = {"tied": tied}
+    heads["linear"] = fit(LinearHead(), zt, yt)
+    heads["cells"] = fit(Cells(), zt, yt)
+    heads["mlp"] = fit(MLPHead(), zt, yt)
+    with torch.no_grad():
+        wv = (tied(zv.float()).argmax(-1) != yv)
+        ws = (tied(zs.float()).argmax(-1) != ys)
+    print(f"tied head errors: val {wv.float().mean().item() * 100:.2f}% of tokens, SPE {ws.float().mean().item() * 100:.2f}%")
+    for name, f in heads.items():
+        n_par = sum(p.numel() for p in f.parameters()) if isinstance(f, nn.Module) else V * d
+        tr = score(f, zt[:200000], yt[:200000], torch.ones(min(200000, len(yt)), dtype=torch.bool, device=dev))
+        va, sp = score(f, zv, yv, wv), score(f, zs, ys, ws)
+        print(f"{name:7} params {n_par / 1e6:5.2f}M | train CE {tr[0]:.4f} acc {tr[1]:.4f} | val CE {va[0]:.4f} acc {va[1]:.4f} "
+              f"(on tied-wrong {va[2]:.3f}) | SPE CE {sp[0]:.4f} acc {sp[1]:.4f} (on tied-wrong {sp[2]:.3f})", flush=True)

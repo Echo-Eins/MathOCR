@@ -71,6 +71,13 @@ class ModelConfig:
     fovea_channels: int = 64
     open_id: int = -1  # vocabulary ids of "{" and "}" (set by the trainer)
     close_id: int = -1
+    # Output readout on top of the tied linear head (whose logits always stay, so a zero head = the control):
+    # "tied" -- nothing else; "cells" -- one small MLP per vocabulary cell on a copy of the final latent, the
+    # cells connected all-to-all (CellHead); "cells_ml" -- the cells read a learned mix of every decoder
+    # layer's state; "cells_vis" -- the cells also read the image memory again (own query, last layer's K/V);
+    # "cells_det" -- cells plus per-cell class evidence of the memory pooled by the last cross-attention.
+    head: str = "tied"
+    head_k: int = 16  # hidden units per vocabulary cell
 
 
 # --------------------------------------------------------------------------- CNN
@@ -849,6 +856,80 @@ def image_pyramid(images: Tensor, levels: int) -> list[Tensor]:
     return planes
 
 
+# ------------------------------------------------------------------------- readout
+
+
+class CellHead(nn.Module):
+    """One MLP per vocabulary cell, all reading the same latent, plus all-to-all links between the cells:
+    ``s_v = w2_v . gelu(W1_v z + b1_v)``, ``out = s + gelu(s) @ L^T`` (L: V x V).  Zero-initialized readout
+    and links, so training starts exactly at the tied head."""
+
+    def __init__(self, d_in: int, vocab: int, k: int):
+        super().__init__()
+        self.vocab, self.k = vocab, k
+        self.w1 = nn.Parameter(torch.empty(d_in, vocab * k))
+        self.b1 = nn.Parameter(torch.zeros(vocab * k))
+        self.w2 = nn.Parameter(torch.empty(vocab, k))
+        self.lateral = nn.Parameter(torch.empty(vocab, vocab))  # cell j -> cell i
+
+    def init_extra(self) -> None:
+        nn.init.normal_(self.w1, std=self.w1.shape[0] ** -0.5)
+        nn.init.zeros_(self.w2)
+        nn.init.zeros_(self.lateral)
+
+    def forward(self, z: Tensor) -> Tensor:
+        h = F.gelu(z @ self.w1.to(z.dtype) + self.b1.to(z.dtype))
+        s = (h.view(*z.shape[:-1], self.vocab, self.k) * self.w2.to(z.dtype)).sum(-1)
+        return s + F.gelu(s) @ self.lateral.to(z.dtype).T
+
+
+class LayerMix(nn.Module):
+    """Softmax-weighted mix of every decoder layer's normalized state (ELMo-style)."""
+
+    def __init__(self, d: int, layers: int):
+        super().__init__()
+        self.norms = nn.ModuleList(nn.LayerNorm(d) for _ in range(layers))
+        self.mix = nn.Parameter(torch.zeros(layers))
+
+    def forward(self, states: list[Tensor]) -> Tensor:
+        w = torch.softmax(self.mix, dim=0)
+        return sum(w[i].to(s.dtype) * n(s) for i, (n, s) in enumerate(zip(self.norms, states)))
+
+
+class MemoryReread(nn.Module):
+    """The readout's own query over the last decoder layer's cross-attention keys/values."""
+
+    def __init__(self, d: int, heads: int):
+        super().__init__()
+        self.heads = heads
+        self.norm = nn.LayerNorm(d)
+        self.q = nn.Linear(d, d)
+        self.out = nn.Linear(d, d)
+
+    def forward(self, x: Tensor, kv: tuple[Tensor, Tensor]) -> Tensor:
+        b, n, d = x.shape
+        q = self.q(self.norm(x)).view(b, n, self.heads, d // self.heads).transpose(1, 2)
+        k, v = kv
+        y = F.scaled_dot_product_attention(q, k.to(q.dtype), v.to(q.dtype))
+        return self.out(y.transpose(1, 2).reshape(b, n, d))
+
+
+class DetectorMap(nn.Module):
+    """Class evidence of every memory cell (memory -> V), read where the decoder's last layer attends:
+    ``logits += w_t @ D(memory)``.  Zero-initialized."""
+
+    def __init__(self, d: int, vocab: int):
+        super().__init__()
+        self.proj = nn.Linear(d, vocab)
+
+    def init_extra(self) -> None:
+        nn.init.zeros_(self.proj.weight)
+        nn.init.zeros_(self.proj.bias)
+
+    def forward(self, memory: Tensor) -> Tensor:
+        return self.proj(memory)
+
+
 # ------------------------------------------------------------------------- Model
 
 
@@ -902,9 +983,18 @@ class Im2Latex(nn.Module):
                           if cfg.fovea else None)
             self.fovea_read = (nn.ModuleList(GlimpseRead(d, cfg.n_heads) for _ in range(cfg.fovea_layer, cfg.dec_layers))
                                if cfg.fovea else None)
+            if cfg.head not in ("tied", "cells", "cells_ml", "cells_vis", "cells_det"):
+                raise ValueError(f"unknown head {cfg.head!r}")
+            self.head = CellHead(d, cfg.vocab_size, cfg.head_k) if cfg.head != "tied" else None
+            self.head_mix = LayerMix(d, cfg.dec_layers) if cfg.head == "cells_ml" else None
+            self.head_read = MemoryReread(d, cfg.n_heads) if cfg.head == "cells_vis" else None
+            self.head_det = DetectorMap(d, cfg.vocab_size) if cfg.head == "cells_det" else None
+        self._readout: dict = {}  # side inputs of the readout, left by _decode for _logits
+        self._det_map: Tensor | None = None  # (B, N, V) class evidence of the memory (cells_det), set by _memory_kv
         self._init_weights()
 
-    LATE = ("count.", "count_proj.", "depth_embed.", "fovea.", "fovea_read.", "feedback.", "deform.", "dir_embed.")  # optional parts, initialized after everything else
+    LATE = ("count.", "count_proj.", "depth_embed.", "fovea.", "fovea_read.", "feedback.", "deform.", "dir_embed.",
+            "head.", "head_mix.", "head_read.", "head_det.")  # optional parts, initialized after everything else
 
     def _init_weights(self) -> None:
         for name, p in self.named_parameters():
@@ -954,6 +1044,8 @@ class Im2Latex(nn.Module):
         return self.enc_norm(x)
 
     def _memory_kv(self, memory: Tensor) -> list[tuple[Tensor, Tensor]]:
+        if self.head_det is not None:
+            self._det_map = self.head_det(memory)
         return [layer.cross_attn.project_kv(memory) for layer in self.decoder]
 
     def _embed(self, tokens: Tensor, offset: int, depth: Tensor | None = None,
@@ -973,7 +1065,18 @@ class Im2Latex(nn.Module):
         return (tokens == self.cfg.open_id).long() - (tokens == self.cfg.close_id).long()
 
     def _logits(self, x: Tensor) -> Tensor:
-        return F.linear(self.dec_norm(x), self.embed.weight)
+        z = self.dec_norm(x)
+        logits = F.linear(z, self.embed.weight)
+        if self.head is None:
+            return logits
+        if self.head_mix is not None:
+            z = self.head_mix(self._readout["states"])
+        elif self.head_read is not None:
+            z = z + self.head_read(x, self._readout["kv"])
+        elif self.head_det is not None:
+            w = self._readout["w"]
+            logits = logits + torch.matmul(w.to(self._det_map.dtype), self._det_map).to(logits.dtype)
+        return logits + self.head(z)
 
     def _glimpses(self, pyramid: list[Tensor], centre: Tensor, zoom: Tensor, valid: Tensor | None) -> Tensor:
         """(B, T, G, d) glimpse tokens; computed only at ``valid`` positions (others get zeros)."""
@@ -999,6 +1102,9 @@ class Im2Latex(nn.Module):
         fb = self.feedback
         first_deform = len(self.decoder) - self.cfg.deform_layers
         g, prev, pos = None, None, None
+        states = []
+        if self.head_read is not None:
+            self._readout = {"kv": mem_kv[-1]}
         for i, (layer, kv) in enumerate(zip(self.decoder, mem_kv)):
             cache = caches[i] if caches is not None else None
             if fb is not None:
@@ -1015,8 +1121,10 @@ class Im2Latex(nn.Module):
                     bias = fb[i - 1](prev, pos, cov)
                 x, w = layer(x, kv, cache, return_cross=True, cross_bias=bias)
                 prev = w.detach()
-            elif i == fl - 1 or i >= first_deform:
+            elif i == fl - 1 or i >= first_deform or (self.head_det is not None and i == len(self.decoder) - 1):
                 x, w = layer(x, kv, cache, return_cross=True)
+                if self.head_det is not None and i == len(self.decoder) - 1:
+                    self._readout = {"w": w}
             else:
                 x = layer(x, kv, cache)
             if i >= first_deform:  # read fine features around this layer's own focus
@@ -1034,6 +1142,10 @@ class Im2Latex(nn.Module):
                 g = self._glimpses(pyramid, centre, zoom, valid)
             if i >= fl:
                 x = x + self.dec_drop(self.fovea_read[i - fl](x, g))
+            if self.head_mix is not None:
+                states.append(x)
+        if self.head_mix is not None:
+            self._readout = {"states": states}
         return x
 
     # -- training

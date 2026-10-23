@@ -50,7 +50,8 @@ def supported(model: Im2Latex) -> bool:
     """Plain decoder layers only (no fovea, deformable reading, attention feedback, count feed, depth or
     direction embeddings): those variants keep per-step state the static step does not carry."""
 
-    return all(getattr(model, name) is None for name in ("fovea", "deform", "feedback", "count_proj", "depth_embed", "dir_embed"))
+    return all(getattr(model, name, None) is None for name in ("fovea", "deform", "feedback", "count_proj", "depth_embed",
+                                                               "dir_embed", "head_mix", "head_read", "head_det"))
 
 
 def enabled(model: Im2Latex, device: torch.device) -> bool:
