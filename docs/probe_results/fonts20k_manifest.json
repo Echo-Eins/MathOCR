@@ -1,0 +1,238 @@
+{
+ "sources": {
+  "im2latex": [
+   {
+    "repo": "yuntian-deng/im2latex-100k",
+    "revision": "a9561dba18ec3183f4922635de9946cfa18969de",
+    "filename": "data/train-00000-of-00001-93885635ef7c6898.parquet",
+    "sha256": "159ae09f4fadf7bf06223ebdaee11a9c8cef93797dbc449354d312be3d961f61"
+   },
+   {
+    "repo": "yuntian-deng/im2latex-100k",
+    "revision": "a9561dba18ec3183f4922635de9946cfa18969de",
+    "filename": "data/val-00000-of-00001-3f88ebb0c1272ccf.parquet",
+    "sha256": "ba437d693904f4475e220c351ca5d431a391c46a74b05c4a4897c084704984f2"
+   },
+   {
+    "repo": "yuntian-deng/im2latex-100k",
+    "revision": "a9561dba18ec3183f4922635de9946cfa18969de",
+    "filename": "data/test-00000-of-00001-fce261550cd3f5db.parquet",
+    "sha256": "5ea0dfedd0f746811c7d564d1666edc4c1d1c72225f1762da77719d928e501e0"
+   }
+  ],
+  "oleehyo": [
+   {
+    "repo": "OleehyO/latex-formulas",
+    "revision": "436791f14f92cbb7fdc1b27f2c316cf1f4e65445",
+    "filename": "cleaned_formulas/train-00000-of-00006.parquet",
+    "sha256": "a82ed31fc852c691cc5a853e2a0c42eacf95d64f410b5c0d29e4e26e6c049ace"
+   },
+   {
+    "repo": "OleehyO/latex-formulas",
+    "revision": "436791f14f92cbb7fdc1b27f2c316cf1f4e65445",
+    "filename": "cleaned_formulas/train-00001-of-00006.parquet",
+    "sha256": "1b502509a370eb42bf73260136fd1cdeeb369fd38b859fc9fc4ef0ccd0fb1b62"
+   },
+   {
+    "repo": "OleehyO/latex-formulas",
+    "revision": "436791f14f92cbb7fdc1b27f2c316cf1f4e65445",
+    "filename": "cleaned_formulas/train-00002-of-00006.parquet",
+    "sha256": "5bf5e047a988c85dc2c5559079273c1208c022900367b16b07e74f56763479ff"
+   },
+   {
+    "repo": "OleehyO/latex-formulas",
+    "revision": "436791f14f92cbb7fdc1b27f2c316cf1f4e65445",
+    "filename": "cleaned_formulas/train-00003-of-00006.parquet",
+    "sha256": "c624c202255c372c38ba9b813d74fd540c76fd659eb172f46a28ff6d4413d4d6"
+   },
+   {
+    "repo": "OleehyO/latex-formulas",
+    "revision": "436791f14f92cbb7fdc1b27f2c316cf1f4e65445",
+    "filename": "cleaned_formulas/train-00004-of-00006.parquet",
+    "sha256": "6ea143ae18e3de417d62de06674bfd1ec84563615e4e25b073a066752c815739"
+   },
+   {
+    "repo": "OleehyO/latex-formulas",
+    "revision": "436791f14f92cbb7fdc1b27f2c316cf1f4e65445",
+    "filename": "cleaned_formulas/train-00005-of-00006.parquet",
+    "sha256": "5ba4fbf0eccdad785124f96ae8337180903d532e6990fe01f54269034003d7b7"
+   }
+  ],
+  "unimer_test": {
+   "repo": "wanderkid/UniMER_Dataset",
+   "revision": "2343ddd963290469da36ca83e3a56c66e068add9",
+   "filename": "UniMER-Test.zip",
+   "sha256": "9bf370b8cac868fee84835f40dec26c477430611253e3feb681356a8149a3a90"
+  }
+ },
+ "data_config": {
+  "out_dir": "data/processed",
+  "cache_dir": "~/.cache/mathocr",
+  "oleehyo_shards": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "oleehyo_train_size": 150000,
+  "oleehyo_val_permille": 15,
+  "oleehyo_test_permille": 15,
+  "max_tokens": 254,
+  "min_token_freq": 10,
+  "min_fit_ratio": 0.6,
+  "workers": 4
+ },
+ "image_config": {
+  "target_glyph_px": 14.0,
+  "max_h": 192,
+  "max_w": 768,
+  "margin": 8,
+  "multiple": 32,
+  "min_scale": 0.1,
+  "max_scale": 4.0
+ },
+ "filters": {
+  "im2latex_val": {
+   "raw": 6072,
+   "empty_label": 0
+  },
+  "im2latex_test": {
+   "raw": 6810,
+   "empty_label": 22
+  },
+  "oleehyo": {
+   "raw": 552340,
+   "dropped_unwrap": 136,
+   "dropped_katex": 3464,
+   "dropped_in_im2latex": 58467,
+   "dropped_too_long": 5144,
+   "dropped_in_eval_sets": 1163,
+   "dropped_duplicate": 38562,
+   "train_candidates": 432039,
+   "selected_train": 150000,
+   "selected_val": 6745,
+   "selected_test": 6620
+  },
+  "im2latex_train": {
+   "raw": 55033,
+   "dropped_in_eval_sets": 1837,
+   "dropped_object_object": 9
+  },
+  "train_filters": {
+   "before": 203187,
+   "dropped_unreadable_when_fitted": 162,
+   "dropped_rare_token": 652,
+   "after": 202373
+  }
+ },
+ "splits": {
+  "ood_cpe": {
+   "rows": 5921,
+   "by_source": {
+    "unimer_cpe": 5921
+   },
+   "uid_label_sha256": "0b16df24ff2010f348f777b1195ff4e840949b24ffe8e78fa914654a1397cb5a",
+   "distinct_shapes": 108
+  },
+  "ood_hwe": {
+   "rows": 6332,
+   "by_source": {
+    "unimer_hwe": 6332
+   },
+   "uid_label_sha256": "9db0f05f4ff23e7a7dd6d5a84957f0e9b6f8a945baf9cb4beb31b0e6387b46a6",
+   "distinct_shapes": 109
+  },
+  "ood_sce": {
+   "rows": 4742,
+   "by_source": {
+    "unimer_sce": 4742
+   },
+   "uid_label_sha256": "a9b6775c3c3d092367dd9189d4b8bf837b9af6cfe7255fc45aae45c5d36958e4",
+   "distinct_shapes": 99
+  },
+  "ood_spe": {
+   "rows": 6762,
+   "by_source": {
+    "unimer_spe": 6762
+   },
+   "uid_label_sha256": "e9dc34524cd2741e4d315a3447468c4bf95d8eb6d8c7bf4f1129934770b63bf4",
+   "distinct_shapes": 116
+  },
+  "test_im2latex": {
+   "rows": 6788,
+   "by_source": {
+    "im2latex": 6788
+   },
+   "uid_label_sha256": "0ceeaa500ed362a0c9bf3cdca3a7976ff93b42f49174b1514cbc4db92d774c58",
+   "distinct_shapes": 48
+  },
+  "test_oleehyo": {
+   "rows": 6620,
+   "by_source": {
+    "oleehyo": 6620
+   },
+   "uid_label_sha256": "8d9bb65070685a4e52d1e6597dc55f71d1866c12a312ab76b4b75dd4da94c883",
+   "distinct_shapes": 113
+  },
+  "train": {
+   "rows": 202373,
+   "by_source": {
+    "im2latex": 53105,
+    "oleehyo": 149268
+   },
+   "uid_label_sha256": "2338708f1e9c9effe9860db48b78e36bbf295cdda0dfc33447b572e622d75f7b",
+   "distinct_shapes": 129
+  },
+  "val": {
+   "rows": 12817,
+   "by_source": {
+    "im2latex": 6072,
+    "oleehyo": 6745
+   },
+   "uid_label_sha256": "27146c61d85d5bf78698d1312470c240871013993e28897eeda94bf559870edf",
+   "distinct_shapes": 120
+  }
+ },
+ "vocab": {
+  "size": 613,
+  "sha256": "d2bfab974d9bd80cb93da70b17dfe651c1f747da834706856dbc0a16af1d3ccb"
+ },
+ "leakage_check": {
+  "ood_cpe": 0,
+  "ood_hwe": 0,
+  "ood_sce": 0,
+  "ood_spe": 0,
+  "test_im2latex": 0,
+  "test_oleehyo": 0,
+  "val": 0
+ },
+ "probe_subset": {
+  "rule": "smallest sha256(uid) per split (val: per source)",
+  "sizes": {
+   "train": 20000,
+   "val_im2latex": 400,
+   "val_oleehyo": 400,
+   "ood_cpe": 300,
+   "ood_sce": 300,
+   "ood_spe": 300
+  }
+ },
+ "fonts": {
+  "rule": "sha256('fonts:' + uid) bucket per train row; other splits unchanged",
+  "shares": {
+   "cm": 0.5,
+   "times": 0.25,
+   "sans": 0.25
+  },
+  "train_rows": {
+   "sans": 4892,
+   "times": 4972,
+   "cm": 10017,
+   "cm (render failed)": 119
+  },
+  "renderer": "scripts/fonts/render.py (pdflatex: txfonts / sansmath, 300 dpi, Ghostscript)",
+  "held_out": "palatino"
+ }
+}
