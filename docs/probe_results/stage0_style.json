@@ -1,0 +1,265 @@
+{
+ "test_im2latex": {
+  "families": {
+   "cal": {
+    "formulas": 323,
+    "variant1_share": 0.15578465063001146,
+    "ref_consistent": 1.0,
+    "independent_expectation": 0.6593662133829763,
+    "pred_consistent": 1.0,
+    "pred_mixes_when_ref_consistent": 0.0
+   },
+   "bf": {
+    "formulas": 160,
+    "variant1_share": 0.16792452830188678,
+    "ref_consistent": 0.99375,
+    "independent_expectation": 0.5774126045541563,
+    "pred_consistent": 1.0,
+    "pred_mixes_when_ref_consistent": 0.0
+   },
+   "to": {
+    "formulas": 51,
+    "variant1_share": 0.6134453781512605,
+    "ref_consistent": 0.9803921568627451,
+    "independent_expectation": 0.458824517127894,
+    "pred_consistent": 1.0,
+    "pred_mixes_when_ref_consistent": 0.0
+   },
+   "dots": {
+    "formulas": 38,
+    "variant1_share": 0.6451612903225806,
+    "ref_consistent": 0.9736842105263158,
+    "independent_expectation": 0.45351996384090426,
+    "pred_consistent": 1.0,
+    "pred_mixes_when_ref_consistent": 0.0
+   },
+   "paren": {
+    "formulas": 2671,
+    "variant1_share": 0.11245192945232728,
+    "ref_consistent": 0.8420067390490453,
+    "independent_expectation": 0.7268347898807753,
+    "pred_consistent": 0.8419475655430712,
+    "pred_mixes_when_ref_consistent": 0.008896797153024912
+   }
+  },
+  "notation_only_share": 0.33352975839717147,
+  "old_normalizer_overmerged_share": 0.0,
+  "decisions_per_notation_error": {
+   "1": 0.2058303886925795,
+   "2": 0.37765017667844525,
+   "5+": 0.16563604240282687,
+   "3-4": 0.2508833922261484
+  },
+  "multi_decision_errors": {
+   "one style shift": 0.6662958843159066,
+   "scattered": 0.3337041156840934
+  },
+  "span_types_top": [
+   [
+    "braces (ref more)",
+    0.529
+   ],
+   [
+    "braces (pred more)",
+    0.108
+   ],
+   [
+    "spacing (swap)",
+    0.099
+   ],
+   [
+    "spacing (ref more)",
+    0.075
+   ],
+   [
+    "mixed (ref more)",
+    0.052
+   ],
+   [
+    "mixed (pred more)",
+    0.036
+   ],
+   [
+    "sizing (swap)",
+    0.033
+   ],
+   [
+    "mixed (swap)",
+    0.013
+   ],
+   [
+    "synonym \\vert->|",
+    0.012
+   ],
+   [
+    "spacing (pred more)",
+    0.011
+   ],
+   [
+    "sizing (ref more)",
+    0.008
+   ],
+   [
+    "synonym \\dots->\\ldots",
+    0.005
+   ]
+  ]
+ },
+ "test_oleehyo": {
+  "families": {
+   "cal": {
+    "formulas": 256,
+    "variant1_share": 0.8734177215189873,
+    "ref_consistent": 0.99609375,
+    "independent_expectation": 0.6832629885018471,
+    "pred_consistent": 1.0,
+    "pred_mixes_when_ref_consistent": 0.0
+   },
+   "bf": {
+    "formulas": 185,
+    "variant1_share": 0.7292517006802721,
+    "ref_consistent": 0.9945945945945946,
+    "independent_expectation": 0.3815542322549429,
+    "pred_consistent": 1.0,
+    "pred_mixes_when_ref_consistent": 0.0
+   },
+   "le": {
+    "formulas": 261,
+    "variant1_share": 0.7553342816500711,
+    "ref_consistent": 0.9846743295019157,
+    "independent_expectation": 0.5387368867293556,
+    "pred_consistent": 1.0,
+    "pred_mixes_when_ref_consistent": 0.0
+   },
+   "ge": {
+    "formulas": 71,
+    "variant1_share": 0.8125,
+    "ref_consistent": 1.0,
+    "independent_expectation": 0.6351439000301592,
+    "pred_consistent": 1.0,
+    "pred_mixes_when_ref_consistent": 0.0
+   },
+   "to": {
+    "formulas": 64,
+    "variant1_share": 0.28378378378378377,
+    "ref_consistent": 0.984375,
+    "independent_expectation": 0.5439213017790199,
+    "pred_consistent": 1.0,
+    "pred_mixes_when_ref_consistent": 0.0
+   },
+   "dots": {
+    "formulas": 139,
+    "variant1_share": 0.5676392572944297,
+    "ref_consistent": 0.9784172661870504,
+    "independent_expectation": 0.38428917609521135,
+    "pred_consistent": 1.0,
+    "pred_mixes_when_ref_consistent": 0.0
+   },
+   "paren": {
+    "formulas": 4542,
+    "variant1_share": 0.11968163505944777,
+    "ref_consistent": 0.7666226332012329,
+    "independent_expectation": 0.5991396216557762,
+    "pred_consistent": 0.7665343915343915,
+    "pred_mixes_when_ref_consistent": 0.008628127696289905
+   }
+  },
+  "notation_only_share": 0.22870090634441087,
+  "old_normalizer_overmerged_share": 0.004078549848942598,
+  "decisions_per_notation_error": {
+   "1": 0.22192866578599735,
+   "5+": 0.24900924702774108,
+   "2": 0.2846763540290621,
+   "3-4": 0.24438573315719947
+  },
+  "multi_decision_errors": {
+   "one style shift": 0.5483870967741935,
+   "scattered": 0.45161290322580644
+  },
+  "span_types_top": [
+   [
+    "braces (ref more)",
+    0.258
+   ],
+   [
+    "braces (pred more)",
+    0.247
+   ],
+   [
+    "sizing (swap)",
+    0.078
+   ],
+   [
+    "mixed (ref more)",
+    0.073
+   ],
+   [
+    "spacing (swap)",
+    0.068
+   ],
+   [
+    "spacing (ref more)",
+    0.06
+   ],
+   [
+    "mixed (pred more)",
+    0.057
+   ],
+   [
+    "synonym \\le->\\leq",
+    0.037
+   ],
+   [
+    "synonym \\vert->|",
+    0.019
+   ],
+   [
+    "synonym \\dots->\\ldots",
+    0.019
+   ],
+   [
+    "synonym \\ge->\\geq",
+    0.017
+   ],
+   [
+    "mixed (swap)",
+    0.016
+   ]
+  ]
+ },
+ "rerank": {
+  "val": {
+   "n": 1000,
+   "greedy_em": 0.544,
+   "consistency_rerank_em": 0.536,
+   "delta_ci95": [
+    -0.015,
+    -0.001
+   ],
+   "changed": 18,
+   "oracle_same_rendering": 0.72
+  },
+  "test_im2latex": {
+   "n": 1000,
+   "greedy_em": 0.524,
+   "consistency_rerank_em": 0.519,
+   "delta_ci95": [
+    -0.01,
+    -0.001
+   ],
+   "changed": 16,
+   "oracle_same_rendering": 0.763
+  },
+  "test_oleehyo": {
+   "n": 1000,
+   "greedy_em": 0.59,
+   "consistency_rerank_em": 0.584,
+   "delta_ci95": [
+    -0.013,
+    0.0
+   ],
+   "changed": 17,
+   "oracle_same_rendering": 0.733
+  }
+ }
+}

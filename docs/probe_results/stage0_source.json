@@ -1,0 +1,102 @@
+{
+ "test_im2latex": {
+  "missing_brace_spans": 3701,
+  "share_more_frequent_in_im2latex_train": 0.2993785463388273,
+  "share_more_frequent_in_oleehyo_train": 0.0691704944609565,
+  "median_log_ratio_im2latex_over_oleehyo": 0.17434148640599428,
+  "top": [
+   [
+    "= { \\frac",
+    272
+   ],
+   [
+    "- { \\frac",
+    160
+   ],
+   [
+    "2 } }",
+    145
+   ],
+   [
+    "+ { \\frac",
+    107
+   ],
+   [
+    "} { \\frac",
+    87
+   ],
+   [
+    "} } =",
+    73
+   ],
+   [
+    "} } {",
+    66
+   ],
+   [
+    "<s> { \\frac",
+    65
+   ],
+   [
+    "} } +",
+    57
+   ],
+   [
+    "} } ,",
+    56
+   ]
+  ]
+ },
+ "test_oleehyo": {
+  "missing_brace_spans": 1457,
+  "share_more_frequent_in_im2latex_train": 0.13589567604667124,
+  "share_more_frequent_in_oleehyo_train": 0.182566918325326,
+  "median_log_ratio_im2latex_over_oleehyo": -0.10927822294653798,
+  "top": [
+   [
+    "- { \\frac",
+    38
+   ],
+   [
+    "2 } }",
+    38
+   ],
+   [
+    "= { \\frac",
+    37
+   ],
+   [
+    "+ { \\frac",
+    26
+   ],
+   [
+    "} } {",
+    24
+   ],
+   [
+    "} } =",
+    19
+   ],
+   [
+    "} } .",
+    17
+   ],
+   [
+    "1 } }",
+    17
+   ],
+   [
+    "} { \\binom",
+    16
+   ],
+   [
+    "} { \\frac",
+    15
+   ]
+  ]
+ },
+ "source_from_crop_stats_accuracy": {
+  "test_im2latex": 1.0,
+  "test_oleehyo": 0.997
+ }
+}
