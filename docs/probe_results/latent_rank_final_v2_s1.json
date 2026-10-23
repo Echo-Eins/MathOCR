@@ -1,0 +1,100 @@
+{
+ "full": {
+  "em": 0.55,
+  "em_notation_free": 0.865,
+  "runaway": 0.0
+ },
+ "latent 4": {
+  "em": 0.0,
+  "em_notation_free": 0.0,
+  "runaway": 0.9
+ },
+ "latent 8": {
+  "em": 0.0,
+  "em_notation_free": 0.0,
+  "runaway": 0.7025
+ },
+ "latent 16": {
+  "em": 0.0,
+  "em_notation_free": 0.0,
+  "runaway": 0.6275
+ },
+ "latent 32": {
+  "em": 0.0,
+  "em_notation_free": 0.0,
+  "runaway": 0.5425
+ },
+ "latent 64": {
+  "em": 0.025,
+  "em_notation_free": 0.0475,
+  "runaway": 0.3375
+ },
+ "latent 128": {
+  "em": 0.255,
+  "em_notation_free": 0.435,
+  "runaway": 0.085
+ },
+ "latent 256": {
+  "em": 0.5375,
+  "em_notation_free": 0.845,
+  "runaway": 0.0
+ },
+ "random 16": {
+  "em": 0.0,
+  "em_notation_free": 0.0,
+  "runaway": 1.0
+ },
+ "random 64": {
+  "em": 0.0,
+  "em_notation_free": 0.0,
+  "runaway": 1.0
+ },
+ "memory 8": {
+  "em": 0.0,
+  "em_notation_free": 0.0,
+  "runaway": 0.68
+ },
+ "memory 16": {
+  "em": 0.0,
+  "em_notation_free": 0.0,
+  "runaway": 0.135
+ },
+ "memory 32": {
+  "em": 0.0,
+  "em_notation_free": 0.0,
+  "runaway": 0.115
+ },
+ "memory 64": {
+  "em": 0.01,
+  "em_notation_free": 0.0125,
+  "runaway": 0.16
+ },
+ "memory 128": {
+  "em": 0.5175,
+  "em_notation_free": 0.825,
+  "runaway": 0.0
+ },
+ "memory 256": {
+  "em": 0.5525,
+  "em_notation_free": 0.87,
+  "runaway": 0.0
+ },
+ "variance": {
+  "latent": [
+   0.42403278528705585,
+   0.5704993762625019,
+   0.6962205736659972,
+   0.820302754773859,
+   0.929926789182002,
+   0.9837391821798835
+  ],
+  "memory": [
+   0.5515321147700776,
+   0.6887952432672693,
+   0.7886838908346551,
+   0.8733347900876752,
+   0.9423264831225285,
+   0.9833017248195051
+  ]
+ }
+}

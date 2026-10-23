@@ -1,0 +1,3 @@
+tied    val_im2latex EM 0.550 edit 0.045 | val_oleehyo EM 0.605 edit 0.032 | ood_cpe EM 0.010 edit 0.306 | ood_sce EM 0.200 edit 0.426 | ood_spe EM 0.203 edit 0.167
+linear  val_im2latex EM 0.557 edit 0.043 | val_oleehyo EM 0.615 edit 0.035 | ood_cpe EM 0.010 edit 0.342 | ood_sce EM 0.183 edit 0.454 | ood_spe EM 0.217 edit 0.172
+cells   val_im2latex EM 0.562 edit 0.044 | val_oleehyo EM 0.613 edit 0.036 | ood_cpe EM 0.013 edit 0.333 | ood_sce EM 0.180 edit 0.460 | ood_spe EM 0.213 edit 0.177
