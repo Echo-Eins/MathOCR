@@ -1,0 +1,734 @@
+{
+ "lambda_on_val": {
+  "chamfer": 0.25,
+  "deep_final": 0.25,
+  "deep_f1": 0.25,
+  "size": 0.25
+ },
+ "val": {
+  "n": 1000,
+  "greedy": {
+   "em": 0.544,
+   "em_notation_free": 0.808,
+   "edit": 0.04091124008000593
+  },
+  "oracle": {
+   "em": 0.781,
+   "em_notation_free": 0.898
+  },
+  "greedy_does_not_compile": 0.005,
+  "chamfer alone": {
+   "lambda": Infinity,
+   "em": 0.268,
+   "em_notation_free": 0.642,
+   "edit": 0.0655384443922531,
+   "delta_notation_free": [
+    -0.166,
+    -0.192,
+    -0.139
+   ],
+   "won": 24,
+   "lost": 190
+  },
+  "chamfer combined": {
+   "lambda": 0.25,
+   "em": 0.547,
+   "em_notation_free": 0.809,
+   "edit": 0.03973764798284698,
+   "delta_notation_free": [
+    0.001,
+    -0.005,
+    0.008
+   ],
+   "won": 6,
+   "lost": 5
+  },
+  "deep_final alone": {
+   "lambda": Infinity,
+   "em": 0.286,
+   "em_notation_free": 0.644,
+   "edit": 0.062114439487184,
+   "delta_notation_free": [
+    -0.164,
+    -0.192,
+    -0.138
+   ],
+   "won": 22,
+   "lost": 186
+  },
+  "deep_final combined": {
+   "lambda": 0.25,
+   "em": 0.541,
+   "em_notation_free": 0.811,
+   "edit": 0.03983060016528315,
+   "delta_notation_free": [
+    0.003,
+    -0.002,
+    0.009
+   ],
+   "won": 6,
+   "lost": 3
+  },
+  "deep_f1 alone": {
+   "lambda": Infinity,
+   "em": 0.278,
+   "em_notation_free": 0.649,
+   "edit": 0.06285663114035908,
+   "delta_notation_free": [
+    -0.159,
+    -0.186,
+    -0.134
+   ],
+   "won": 18,
+   "lost": 177
+  },
+  "deep_f1 combined": {
+   "lambda": 0.25,
+   "em": 0.543,
+   "em_notation_free": 0.81,
+   "edit": 0.039717928678445924,
+   "delta_notation_free": [
+    0.002,
+    -0.004,
+    0.008
+   ],
+   "won": 6,
+   "lost": 4
+  },
+  "size alone": {
+   "lambda": Infinity,
+   "em": 0.328,
+   "em_notation_free": 0.67,
+   "edit": 0.06016433110344073,
+   "delta_notation_free": [
+    -0.138,
+    -0.161,
+    -0.114
+   ],
+   "won": 16,
+   "lost": 154
+  },
+  "size combined": {
+   "lambda": 0.25,
+   "em": 0.542,
+   "em_notation_free": 0.806,
+   "edit": 0.04011890871464598,
+   "delta_notation_free": [
+    -0.002,
+    -0.008,
+    0.004
+   ],
+   "won": 4,
+   "lost": 6
+  },
+  "sanity chamfer": 0.2606774668630339,
+  "sanity deep_final": 0.27835051546391754,
+  "sanity deep_f1": 0.25773195876288657,
+  "sanity size": 0.19882179675994108
+ },
+ "test_im2latex": {
+  "n": 1000,
+  "greedy": {
+   "em": 0.524,
+   "em_notation_free": 0.87,
+   "edit": 0.047967920074965816
+  },
+  "oracle": {
+   "em": 0.801,
+   "em_notation_free": 0.928
+  },
+  "greedy_does_not_compile": 0.008,
+  "chamfer alone": {
+   "lambda": Infinity,
+   "em": 0.306,
+   "em_notation_free": 0.794,
+   "edit": 0.06715769451342922,
+   "delta_notation_free": [
+    -0.076,
+    -0.095,
+    -0.058
+   ],
+   "won": 8,
+   "lost": 84
+  },
+  "chamfer combined": {
+   "lambda": 0.25,
+   "em": 0.527,
+   "em_notation_free": 0.874,
+   "edit": 0.04599580491739144,
+   "delta_notation_free": [
+    0.004,
+    -0.001,
+    0.009
+   ],
+   "won": 5,
+   "lost": 1
+  },
+  "deep_final alone": {
+   "lambda": Infinity,
+   "em": 0.317,
+   "em_notation_free": 0.796,
+   "edit": 0.06522004001675569,
+   "delta_notation_free": [
+    -0.074,
+    -0.092,
+    -0.057
+   ],
+   "won": 6,
+   "lost": 80
+  },
+  "deep_final combined": {
+   "lambda": 0.25,
+   "em": 0.529,
+   "em_notation_free": 0.874,
+   "edit": 0.046069836955892084,
+   "delta_notation_free": [
+    0.004,
+    -0.001,
+    0.009
+   ],
+   "won": 5,
+   "lost": 1
+  },
+  "deep_f1 alone": {
+   "lambda": Infinity,
+   "em": 0.316,
+   "em_notation_free": 0.796,
+   "edit": 0.06573544835370143,
+   "delta_notation_free": [
+    -0.074,
+    -0.092,
+    -0.057
+   ],
+   "won": 6,
+   "lost": 80
+  },
+  "deep_f1 combined": {
+   "lambda": 0.25,
+   "em": 0.529,
+   "em_notation_free": 0.874,
+   "edit": 0.04601922966844269,
+   "delta_notation_free": [
+    0.004,
+    -0.001,
+    0.009
+   ],
+   "won": 5,
+   "lost": 1
+  },
+  "size alone": {
+   "lambda": Infinity,
+   "em": 0.376,
+   "em_notation_free": 0.815,
+   "edit": 0.060228914996524045,
+   "delta_notation_free": [
+    -0.055,
+    -0.071,
+    -0.04
+   ],
+   "won": 5,
+   "lost": 60
+  },
+  "size combined": {
+   "lambda": 0.25,
+   "em": 0.528,
+   "em_notation_free": 0.873,
+   "edit": 0.045972483761010936,
+   "delta_notation_free": [
+    0.003,
+    -0.002,
+    0.008
+   ],
+   "won": 5,
+   "lost": 2
+  },
+  "sanity chamfer": 0.30327868852459017,
+  "sanity deep_final": 0.3135245901639344,
+  "sanity deep_f1": 0.32581967213114754,
+  "sanity size": 0.25
+ },
+ "test_oleehyo": {
+  "n": 1000,
+  "greedy": {
+   "em": 0.59,
+   "em_notation_free": 0.801,
+   "edit": 0.03313433908405999
+  },
+  "oracle": {
+   "em": 0.801,
+   "em_notation_free": 0.899
+  },
+  "greedy_does_not_compile": 0.014,
+  "chamfer alone": {
+   "lambda": Infinity,
+   "em": 0.257,
+   "em_notation_free": 0.585,
+   "edit": 0.060771846380025744,
+   "delta_notation_free": [
+    -0.216,
+    -0.244,
+    -0.186
+   ],
+   "won": 24,
+   "lost": 240
+  },
+  "chamfer combined": {
+   "lambda": 0.25,
+   "em": 0.595,
+   "em_notation_free": 0.81,
+   "edit": 0.03174698656043666,
+   "delta_notation_free": [
+    0.009,
+    0.003,
+    0.016
+   ],
+   "won": 10,
+   "lost": 1
+  },
+  "deep_final alone": {
+   "lambda": Infinity,
+   "em": 0.267,
+   "em_notation_free": 0.593,
+   "edit": 0.05880450852998343,
+   "delta_notation_free": [
+    -0.208,
+    -0.237,
+    -0.178
+   ],
+   "won": 23,
+   "lost": 231
+  },
+  "deep_final combined": {
+   "lambda": 0.25,
+   "em": 0.595,
+   "em_notation_free": 0.806,
+   "edit": 0.031207333931564614,
+   "delta_notation_free": [
+    0.005,
+    -0.002,
+    0.012
+   ],
+   "won": 9,
+   "lost": 4
+  },
+  "deep_f1 alone": {
+   "lambda": Infinity,
+   "em": 0.266,
+   "em_notation_free": 0.59,
+   "edit": 0.058337040844234446,
+   "delta_notation_free": [
+    -0.211,
+    -0.24,
+    -0.18197500000000014
+   ],
+   "won": 25,
+   "lost": 236
+  },
+  "deep_f1 combined": {
+   "lambda": 0.25,
+   "em": 0.593,
+   "em_notation_free": 0.805,
+   "edit": 0.03125045162795823,
+   "delta_notation_free": [
+    0.004,
+    -0.003,
+    0.011
+   ],
+   "won": 9,
+   "lost": 5
+  },
+  "size alone": {
+   "lambda": Infinity,
+   "em": 0.346,
+   "em_notation_free": 0.64,
+   "edit": 0.05143521388058612,
+   "delta_notation_free": [
+    -0.161,
+    -0.189,
+    -0.134
+   ],
+   "won": 26,
+   "lost": 187
+  },
+  "size combined": {
+   "lambda": 0.25,
+   "em": 0.594,
+   "em_notation_free": 0.806,
+   "edit": 0.03133332258170299,
+   "delta_notation_free": [
+    0.005,
+    0.0,
+    0.011
+   ],
+   "won": 7,
+   "lost": 2
+  },
+  "sanity chamfer": 0.24609375,
+  "sanity deep_final": 0.2526041666666667,
+  "sanity deep_f1": 0.23828125,
+  "sanity size": 0.18098958333333334
+ },
+ "ood_spe": {
+  "n": 400,
+  "greedy": {
+   "em": 0.1825,
+   "em_notation_free": 0.38,
+   "edit": 0.16332612641143865
+  },
+  "oracle": {
+   "em": 0.35,
+   "em_notation_free": 0.495
+  },
+  "greedy_does_not_compile": 0.0325,
+  "chamfer alone": {
+   "lambda": Infinity,
+   "em": 0.0775,
+   "em_notation_free": 0.315,
+   "edit": 0.17444802483911417,
+   "delta_notation_free": [
+    -0.065,
+    -0.1025,
+    -0.03
+   ],
+   "won": 17,
+   "lost": 43
+  },
+  "chamfer combined": {
+   "lambda": 0.25,
+   "em": 0.19,
+   "em_notation_free": 0.3975,
+   "edit": 0.15395177943959265,
+   "delta_notation_free": [
+    0.0175,
+    0.0025,
+    0.035
+   ],
+   "won": 9,
+   "lost": 2
+  },
+  "deep_final alone": {
+   "lambda": Infinity,
+   "em": 0.0675,
+   "em_notation_free": 0.29,
+   "edit": 0.17417682005936694,
+   "delta_notation_free": [
+    -0.09,
+    -0.1275,
+    -0.055
+   ],
+   "won": 12,
+   "lost": 48
+  },
+  "deep_final combined": {
+   "lambda": 0.25,
+   "em": 0.1925,
+   "em_notation_free": 0.3975,
+   "edit": 0.15413150883765517,
+   "delta_notation_free": [
+    0.0175,
+    0.0025,
+    0.035
+   ],
+   "won": 9,
+   "lost": 2
+  },
+  "deep_f1 alone": {
+   "lambda": Infinity,
+   "em": 0.0675,
+   "em_notation_free": 0.3125,
+   "edit": 0.17391351540464775,
+   "delta_notation_free": [
+    -0.0675,
+    -0.105,
+    -0.03
+   ],
+   "won": 16,
+   "lost": 43
+  },
+  "deep_f1 combined": {
+   "lambda": 0.25,
+   "em": 0.1925,
+   "em_notation_free": 0.3975,
+   "edit": 0.15411809076531469,
+   "delta_notation_free": [
+    0.0175,
+    0.0025,
+    0.035
+   ],
+   "won": 9,
+   "lost": 2
+  },
+  "size alone": {
+   "lambda": Infinity,
+   "em": 0.07,
+   "em_notation_free": 0.2725,
+   "edit": 0.17872005601219748,
+   "delta_notation_free": [
+    -0.1075,
+    -0.145,
+    -0.0725
+   ],
+   "won": 8,
+   "lost": 51
+  },
+  "size combined": {
+   "lambda": 0.25,
+   "em": 0.19,
+   "em_notation_free": 0.395,
+   "edit": 0.15471742896114127,
+   "delta_notation_free": [
+    0.015,
+    0.0,
+    0.03
+   ],
+   "won": 8,
+   "lost": 2
+  },
+  "sanity chamfer": 0.33620689655172414,
+  "sanity deep_final": 0.2959770114942529,
+  "sanity deep_f1": 0.3275862068965517,
+  "sanity size": 0.25287356321839083
+ },
+ "ood_sce": {
+  "n": 400,
+  "greedy": {
+   "em": 0.175,
+   "em_notation_free": 0.31,
+   "edit": 0.3647917288031147
+  },
+  "oracle": {
+   "em": 0.325,
+   "em_notation_free": 0.47
+  },
+  "greedy_does_not_compile": 0.0225,
+  "chamfer alone": {
+   "lambda": Infinity,
+   "em": 0.1475,
+   "em_notation_free": 0.3075,
+   "edit": 0.3558661068854328,
+   "delta_notation_free": [
+    -0.0025,
+    -0.0375,
+    0.03
+   ],
+   "won": 22,
+   "lost": 23
+  },
+  "chamfer combined": {
+   "lambda": 0.25,
+   "em": 0.2025,
+   "em_notation_free": 0.35,
+   "edit": 0.3329163461401954,
+   "delta_notation_free": [
+    0.04,
+    0.0225,
+    0.06
+   ],
+   "won": 16,
+   "lost": 0
+  },
+  "deep_final alone": {
+   "lambda": Infinity,
+   "em": 0.1575,
+   "em_notation_free": 0.33,
+   "edit": 0.35666381346693143,
+   "delta_notation_free": [
+    0.02,
+    -0.012562499999999997,
+    0.055
+   ],
+   "won": 28,
+   "lost": 20
+  },
+  "deep_final combined": {
+   "lambda": 0.25,
+   "em": 0.2025,
+   "em_notation_free": 0.3575,
+   "edit": 0.3330913341661143,
+   "delta_notation_free": [
+    0.0475,
+    0.0275,
+    0.07
+   ],
+   "won": 19,
+   "lost": 0
+  },
+  "deep_f1 alone": {
+   "lambda": Infinity,
+   "em": 0.1625,
+   "em_notation_free": 0.3325,
+   "edit": 0.3521698800401992,
+   "delta_notation_free": [
+    0.0225,
+    -0.0125,
+    0.0575
+   ],
+   "won": 30,
+   "lost": 21
+  },
+  "deep_f1 combined": {
+   "lambda": 0.25,
+   "em": 0.205,
+   "em_notation_free": 0.36,
+   "edit": 0.33118690080688523,
+   "delta_notation_free": [
+    0.05,
+    0.03,
+    0.075
+   ],
+   "won": 20,
+   "lost": 0
+  },
+  "size alone": {
+   "lambda": Infinity,
+   "em": 0.1375,
+   "em_notation_free": 0.3,
+   "edit": 0.3752150690405728,
+   "delta_notation_free": [
+    -0.01,
+    -0.045,
+    0.0275
+   ],
+   "won": 23,
+   "lost": 27
+  },
+  "size combined": {
+   "lambda": 0.25,
+   "em": 0.2025,
+   "em_notation_free": 0.355,
+   "edit": 0.3324487498713594,
+   "delta_notation_free": [
+    0.045,
+    0.025,
+    0.0675
+   ],
+   "won": 18,
+   "lost": 0
+  },
+  "sanity chamfer": 0.3716577540106952,
+  "sanity deep_final": 0.393048128342246,
+  "sanity deep_f1": 0.3877005347593583,
+  "sanity size": 0.3155080213903743
+ },
+ "ood_cpe": {
+  "n": 300,
+  "greedy": {
+   "em": 0.0033333333333333335,
+   "em_notation_free": 0.03333333333333333,
+   "edit": 0.2724523593027364
+  },
+  "oracle": {
+   "em": 0.023333333333333334,
+   "em_notation_free": 0.07
+  },
+  "greedy_does_not_compile": 0.28,
+  "chamfer alone": {
+   "lambda": Infinity,
+   "em": 0.013333333333333334,
+   "em_notation_free": 0.03666666666666667,
+   "edit": 0.2592178334616752,
+   "delta_notation_free": [
+    0.0033333333333333335,
+    -0.01,
+    0.02
+   ],
+   "won": 3,
+   "lost": 2
+  },
+  "chamfer combined": {
+   "lambda": 0.25,
+   "em": 0.01,
+   "em_notation_free": 0.04,
+   "edit": 0.25608247318870914,
+   "delta_notation_free": [
+    0.006666666666666667,
+    0.0,
+    0.016666666666666666
+   ],
+   "won": 2,
+   "lost": 0
+  },
+  "deep_final alone": {
+   "lambda": Infinity,
+   "em": 0.0033333333333333335,
+   "em_notation_free": 0.03333333333333333,
+   "edit": 0.26082412383720777,
+   "delta_notation_free": [
+    0.0,
+    -0.02,
+    0.02
+   ],
+   "won": 5,
+   "lost": 5
+  },
+  "deep_final combined": {
+   "lambda": 0.25,
+   "em": 0.006666666666666667,
+   "em_notation_free": 0.04,
+   "edit": 0.25549199317809135,
+   "delta_notation_free": [
+    0.006666666666666667,
+    0.0,
+    0.016666666666666666
+   ],
+   "won": 2,
+   "lost": 0
+  },
+  "deep_f1 alone": {
+   "lambda": Infinity,
+   "em": 0.0,
+   "em_notation_free": 0.03,
+   "edit": 0.26111344634030154,
+   "delta_notation_free": [
+    -0.0033333333333333335,
+    -0.023333333333333334,
+    0.016666666666666666
+   ],
+   "won": 4,
+   "lost": 5
+  },
+  "deep_f1 combined": {
+   "lambda": 0.25,
+   "em": 0.006666666666666667,
+   "em_notation_free": 0.04,
+   "edit": 0.2571258234759718,
+   "delta_notation_free": [
+    0.006666666666666667,
+    0.0,
+    0.016666666666666666
+   ],
+   "won": 2,
+   "lost": 0
+  },
+  "size alone": {
+   "lambda": Infinity,
+   "em": 0.006666666666666667,
+   "em_notation_free": 0.03333333333333333,
+   "edit": 0.26165780254474,
+   "delta_notation_free": [
+    0.0,
+    -0.013333333333333334,
+    0.013333333333333334
+   ],
+   "won": 2,
+   "lost": 2
+  },
+  "size combined": {
+   "lambda": 0.25,
+   "em": 0.006666666666666667,
+   "em_notation_free": 0.04,
+   "edit": 0.2550249808171347,
+   "delta_notation_free": [
+    0.006666666666666667,
+    0.0,
+    0.016666666666666666
+   ],
+   "won": 2,
+   "lost": 0
+  },
+  "sanity chamfer": 0.6109215017064846,
+  "sanity deep_final": 0.5494880546075085,
+  "sanity deep_f1": 0.5460750853242321,
+  "sanity size": 0.5017064846416383
+ }
+}

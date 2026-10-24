@@ -63,20 +63,35 @@ def render_ink(group: str, font: str, cid: str) -> np.ndarray | None:
         return norm_ink(analyze(im))
 
 
-def points(a: np.ndarray, cap: int = 2500) -> torch.Tensor | None:
+def points(a: np.ndarray, cap: int = 1500) -> np.ndarray | None:
     ys, xs = np.nonzero(a > 0.5)
     if len(ys) == 0:
         return None
     step = max(1, len(ys) // cap)
-    return torch.tensor(np.stack([ys[::step], xs[::step]], 1), dtype=torch.float32, device=dev)
+    return np.stack([ys[::step], xs[::step]], 1).astype(np.float32)
 
 
-def chamfer(pa: torch.Tensor, pb: torch.Tensor) -> float:
-    best = float("inf")
-    for shift in (torch.zeros(2, device=dev), pa.mean(0) - pb.mean(0)):
-        d = torch.cdist(pa, pb + shift)
-        best = min(best, (d.min(1).values.mean() + d.min(0).values.mean()).item())
-    return best
+@torch.no_grad()
+def chamfer_many(p_in: np.ndarray, cands: list[np.ndarray]) -> list[float]:
+    """Symmetric mean nearest-ink distance from the input to every candidate, one batched cdist per alignment
+    (top-left, centroid) and a single device sync -- not thousands of tiny launches."""
+    a = torch.from_numpy(p_in).to(dev)
+    m = max(len(p) for p in cands)
+    pts = torch.zeros(len(cands), m, 2, device=dev)
+    mask = torch.zeros(len(cands), m, dtype=torch.bool, device=dev)
+    for k, p in enumerate(cands):
+        pts[k, : len(p)] = torch.from_numpy(p).to(dev)
+        mask[k, : len(p)] = True
+    means = (pts * mask[..., None]).sum(1) / mask.sum(1, keepdim=True)
+    best = None
+    for shift in (torch.zeros_like(means), a.mean(0)[None] - means):
+        d = torch.cdist(a[None].expand(len(cands), -1, -1), pts + shift[:, None])  # (K, n_in, m)
+        d = d.masked_fill(~mask[:, None, :], float("inf"))
+        to_cand = d.min(2).values.mean(1)
+        to_in = d.min(1).values.masked_fill(~mask, 0.0).sum(1) / mask.sum(1)
+        c = to_cand + to_in
+        best = c if best is None else torch.minimum(best, c)
+    return best.cpu().tolist()
 
 
 @torch.no_grad()
@@ -95,13 +110,12 @@ def deep_sims(backbone, inp: np.ndarray, cands: list[np.ndarray], chunk: int = 6
         m = F.adaptive_avg_pool2d(x, f.shape[-2:]) > 0.02
         feats.append(f)
         masks.append(m)
-    f, m = torch.cat(feats), torch.cat(masks)
-    out = []
-    for j in range(1, len(arrays)):
-        union = (m[0] | m[j])[0]
-        cos = (f[0] * f[j]).sum(0)
-        out.append(float(cos[union].mean()) if union.any() else -1.0)
-    return out
+    f, m = torch.cat(feats), torch.cat(masks)[:, 0]
+    union = m[:1] | m[1:]  # (K, h, w)
+    cos = (f[:1] * f[1:]).sum(1)  # (K, h, w)
+    num = (cos * union).sum((1, 2))
+    den = union.sum((1, 2))
+    return torch.where(den > 0, num / den.clamp_min(1), torch.full_like(num, -1.0)).cpu().tolist()
 
 
 def zscore(v: np.ndarray) -> np.ndarray:
@@ -119,37 +133,70 @@ def boot_ci(d: np.ndarray, n: int = 2000, seed: int = 0):
     return float(np.percentile(m, 2.5)), float(np.percentile(m, 97.5))
 
 
+def deep_ok(a: np.ndarray, inp: np.ndarray) -> bool:
+    """A render more than twice the input's height or width is wrong anyway; comparing it would size the common
+    canvas after it (a 13 000 px garbage render once asked for 11.5 Mpx x 6 images, overflowed the 24 GB and the
+    driver's fall-back to system memory ended in a DPC_WATCHDOG_VIOLATION bugcheck, twice)."""
+    return a.shape[0] <= 2 * inp.shape[0] + 32 and a.shape[1] <= 2 * inp.shape[1] + 32
+
+
 def main() -> None:
     determinism.configure(dev)
+    # Hard cap: past it PyTorch raises OutOfMemoryError instead of the driver paging GPU memory to system RAM.
+    torch.cuda.set_per_process_memory_fraction(0.5, torch.cuda.current_device())
     backbones = {}
     for name, ck in BACKBONES.items():
         model, _, _, _ = load_checkpoint(ck, dev)
         backbones[name] = model.backbone.eval()
     rows = [json.loads(x) for x in (WORK / "candidates.jsonl").read_text(encoding="utf-8").splitlines()]
     stores = {s: CropStore(DATA / f"{s}.parquet") for s in {r["split"] for r in rows}}
-    samples = []
-    for n_row, r in enumerate(rows):
-        group = GROUP[r["split"]]
-        inp = norm_ink(stores[r["split"]].crop(r["index"]))
-        ids = [c["id"] for c in r["cands"]] + [f"{r['split']}__{r['index']}__gt"]
-        sims = {m: np.full((len(ids), len(FONTS[group])), -np.inf) for m in MEASURES}
-        if inp is not None:
-            p_in = points(inp)
-            for fi, font in enumerate(FONTS[group]):
-                inks = [render_ink(group, font, cid) for cid in ids]
-                ok = [k for k, a in enumerate(inks) if a is not None and points(a) is not None]
-                for k in ok:
-                    a = inks[k]
-                    sims["chamfer"][k, fi] = -chamfer(p_in, points(a))
-                    sims["size"][k, fi] = -(abs(np.log(a.shape[1] / inp.shape[1])) + abs(np.log(a.shape[0] / inp.shape[0])))
-                for name, bb in backbones.items():
-                    vals = deep_sims(bb, inp, [inks[k] for k in ok])
-                    for k, v in zip(ok, vals):
-                        sims[name][k, fi] = v
-        samples.append({"split": r["split"], "gt": r["gt"], "cands": r["cands"],
-                        "sim": {m: s.max(axis=1) for m, s in sims.items()}})  # best font
-        if n_row % 500 == 0:
-            print("scored", n_row, "/", len(rows), flush=True)
+    # Phase 1: similarities, appended to WORK/sims.jsonl as they are computed (a crash loses nothing; re-runs resume).
+    cache = WORK / "sims.jsonl"
+    done = {}
+    if cache.exists():
+        for line in cache.read_text(encoding="utf-8").splitlines():
+            d = json.loads(line)
+            done[(d["split"], d["index"])] = d["sim"]
+    with open(cache, "a", encoding="utf-8", newline="\n") as log:
+        for n_row, r in enumerate(rows):
+            if (r["split"], r["index"]) in done:
+                continue
+            group = GROUP[r["split"]]
+            inp = norm_ink(stores[r["split"]].crop(r["index"]))
+            ids = [c["id"] for c in r["cands"]] + [f"{r['split']}__{r['index']}__gt"]
+            sims = {m: np.full((len(ids), len(FONTS[group])), -np.inf) for m in MEASURES}
+            p_in = points(inp) if inp is not None else None
+            if p_in is not None:
+                for fi, font in enumerate(FONTS[group]):
+                    inks = [render_ink(group, font, cid) for cid in ids]
+                    pts = [points(a) if a is not None else None for a in inks]
+                    ok = [k for k, p in enumerate(pts) if p is not None]
+                    if not ok:
+                        continue
+                    for k, c in zip(ok, chamfer_many(p_in, [pts[k] for k in ok])):
+                        sims["chamfer"][k, fi] = -c
+                        a = inks[k]
+                        sims["size"][k, fi] = -(abs(np.log(a.shape[1] / inp.shape[1])) + abs(np.log(a.shape[0] / inp.shape[0])))
+                    fit = [k for k in ok if deep_ok(inks[k], inp)]
+                    for name, bb in backbones.items():
+                        if not fit:
+                            continue
+                        try:
+                            vals = deep_sims(bb, inp, [inks[k] for k in fit])
+                        except torch.OutOfMemoryError:
+                            torch.cuda.empty_cache()
+                            print(f"OOM on {r['split']}#{r['index']} ({name}); deep similarity left at -inf", flush=True)
+                            continue
+                        for k, v in zip(fit, vals):
+                            sims[name][k, fi] = v
+            best = {m: [float(v) for v in s.max(axis=1)] for m, s in sims.items()}  # best font
+            done[(r["split"], r["index"])] = best
+            log.write(json.dumps({"split": r["split"], "index": r["index"], "sim": best}) + "\n")
+            if n_row % 250 == 0:
+                log.flush()
+                print("scored", n_row, "/", len(rows), flush=True)
+    samples = [{"split": r["split"], "gt": r["gt"], "cands": r["cands"],
+                "sim": {m: np.array(v, dtype=float) for m, v in done[(r["split"], r["index"])].items()}} for r in rows]
 
     def pick(s, measure, lam):
         cands = s["cands"]
