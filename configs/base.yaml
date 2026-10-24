@@ -33,7 +33,8 @@ model:
   ff_mult: 4
   dropout: 0.1
   max_len: 256
-  encoder: transformer     # transformer | aas | aas_sort (linear-cost global mixers, model.py)
+  encoder: transformer     # transformer | aas | aas_sort (linear-cost global mixers) | triscan (TriScanBlock first), model.py
+  triscan_exchange: true   # triscan: the causal / anti-causal / diagonal streams condition each other
   local_expansion: 1.5     # AAS local residual width (12 d^2 per block, same as a Transformer layer)
   sort_window: 32
   attn_kernel: sdpa        # sdpa | triton (fused deterministic attention for long key sets, attn_kernel.py)

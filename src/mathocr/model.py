@@ -38,6 +38,9 @@ class ModelConfig:
     # exact shifts, linear in the map size) or "aas_sort" (tokens grouped by
     # sorting on a learned coordinate, windowed attention in that order).
     encoder: str = "transformer"
+    # "triscan": TriScanBlock (causal / anti-causal / diagonal convolutions on the memory map) replaces the first
+    # transformer layer; triscan_exchange: the streams condition each other (start-middle-end anchors, row summaries)
+    triscan_exchange: bool = True
     aas_kernel: bool = False  # fused Triton AAS (deterministic gather-form backward)
     # "sdpa": F.scaled_dot_product_attention everywhere; "triton": fused deterministic attention
     # (attn_kernel.py) for bf16/fp16 CUDA calls with >= ATTN_KERNEL_MIN_KEYS keys (training and the
@@ -219,6 +222,81 @@ def sinusoid_1d(n: int, dim: int) -> Tensor:
 
 
 # ------------------------------------------------- linear-cost global mixers (AAS)
+
+
+class DirectionalConv(nn.Module):
+    """Depthwise convolutions along the width of a (B, C, H, W) map: causal (each cell sees only cells to its left)
+    or anti-causal (only to its right); kernel ``k`` at dilations 1, 3, 9 -- a reach of most of a line."""
+
+    def __init__(self, c: int, right: bool, k: int = 7, dilations: tuple[int, ...] = (1, 3, 9)):
+        super().__init__()
+        self.right, self.k, self.dilations = right, k, dilations
+        self.convs = nn.ModuleList(nn.Conv2d(c, c, (1, k), dilation=(1, d), groups=c, bias=False) for d in dilations)
+
+    def forward(self, x: Tensor) -> Tensor:
+        out = 0
+        for conv, d in zip(self.convs, self.dilations):
+            pad = (self.k - 1) * d
+            out = out + conv(F.pad(x, (0, pad) if self.right else (pad, 0)))
+        return out
+
+
+class DiagonalConv(nn.Module):
+    """Depthwise 2D convolution restricted to the two visual diagonals (up-right and down-right, both ways): the
+    super-/subscript relations.  Memory cells are 8 px tall and 4 px wide, so a 45-degree line moves two cells
+    sideways per cell up; the kernel (5 x 9) keeps the taps with |dx| = 2 |dy| (+-1)."""
+
+    def __init__(self, c: int):
+        super().__init__()
+        self.conv = nn.Conv2d(c, c, (5, 9), padding=(2, 4), groups=c, bias=False)
+        dy, dx = torch.meshgrid(torch.arange(-2, 3), torch.arange(-4, 5), indexing="ij")
+        self.register_buffer("mask", ((dx.abs() - 2 * dy.abs()).abs() <= 1).float()[None, None], persistent=False)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return F.conv2d(x, self.conv.weight * self.mask.to(self.conv.weight.dtype), padding=(2, 4), groups=x.shape[1])
+
+
+class TriScanBlock(nn.Module):
+    """Three-kernel mixer on the memory map (the assignment owner's design): a causal and an anti-causal convolution
+    along the reading direction and a bidirectional diagonal one.  The diagonal stream's view of the formula's start,
+    middle and end (its mean over the left, middle and right third of the map) tells the two directional streams
+    what to look for beyond the obvious (FiLM), and -- with ``exchange`` -- each directional stream is run a second
+    time modulated by the other's whole-row summary (the causal stream's last column, the anti-causal's first).
+    Without ``exchange`` the three streams are independent single passes."""
+
+    def __init__(self, d: int, dropout: float, exchange: bool, ff_mult: int = 3):
+        super().__init__()
+        self.exchange = exchange
+        self.n1, self.n2 = ChannelRMSNorm2d(d), ChannelRMSNorm2d(d)
+        self.causal, self.anti, self.diag = DirectionalConv(d, right=False), DirectionalConv(d, right=True), DiagonalConv(d)
+        self.proj = nn.Conv2d(3 * d, d, 1)
+        self.ff = nn.Sequential(nn.Conv2d(d, ff_mult * d, 1), nn.GELU(), nn.Dropout(dropout), nn.Conv2d(ff_mult * d, d, 1))
+        self.drop = nn.Dropout(dropout)
+        if exchange:
+            self.anchor = nn.Sequential(nn.Linear(3 * d, d // 2), nn.GELU(), nn.Linear(d // 2, 4 * d))
+            self.from_anti, self.from_causal = nn.Conv2d(d, d, 1), nn.Conv2d(d, d, 1)
+
+    def init_extra(self) -> None:
+        if self.exchange:  # start as the plain three-stream block: zero modulation
+            nn.init.zeros_(self.anchor[2].weight)
+            nn.init.zeros_(self.anchor[2].bias)
+            for m in (self.from_anti, self.from_causal):
+                nn.init.zeros_(m.weight)
+                nn.init.zeros_(m.bias)
+
+    def forward(self, x: Tensor) -> Tensor:
+        h = self.n1(x)
+        yd = self.diag(h)
+        yc, ya = self.causal(h), self.anti(h)
+        if self.exchange:
+            thirds = torch.tensor_split(yd, 3, dim=-1)
+            g = torch.cat([t.mean(dim=(-2, -1)) for t in thirds], dim=-1)  # (B, 3d): start, middle, end
+            gc, bc, ga, ba = self.anchor(g)[..., None, None].chunk(4, dim=1)
+            sa, sc = ya[..., :1], yc[..., -1:]  # whole-row summaries, broadcast along the row
+            yc = self.causal(h * (1 + torch.tanh(gc + self.from_anti(sa))) + bc)
+            ya = self.anti(h * (1 + torch.tanh(ga + self.from_causal(sc))) + ba)
+        x = x + self.drop(self.proj(torch.cat([yc, ya, yd], dim=1)))
+        return x + self.drop(self.ff(self.n2(x)))
 
 
 class ChannelRMSNorm2d(nn.Module):
@@ -946,6 +1024,9 @@ class Im2Latex(nn.Module):
         if cfg.encoder == "transformer":
             blocks = (EncoderLayer(d, cfg.n_heads, cfg.ff_mult, cfg.dropout, cfg.attn_kernel)
                       for _ in range(cfg.enc_layers))
+        elif cfg.encoder == "triscan":  # the three-kernel mixer in place of the first transformer layer
+            blocks = [TriScanBlock(d, cfg.dropout, cfg.triscan_exchange)] + [
+                EncoderLayer(d, cfg.n_heads, cfg.ff_mult, cfg.dropout, cfg.attn_kernel) for _ in range(cfg.enc_layers - 1)]
         elif cfg.encoder == "aas":
             blocks = (AASBlock(d, cfg.n_heads, cfg.local_expansion, cfg.aas_kernel) for _ in range(cfg.enc_layers))
         elif cfg.encoder == "aas_sort":
@@ -1035,6 +1116,10 @@ class Im2Latex(nn.Module):
         x = self.enc_drop(x + sinusoid_2d(h, w, self.cfg.d_model, x.device).to(x.dtype))
         if self.cfg.encoder == "transformer":
             for layer in self.encoder:
+                x = layer(x)
+        elif self.cfg.encoder == "triscan":  # map-shaped first block, then sequence layers
+            x = self.encoder[0](x.transpose(1, 2).reshape(b, -1, h, w)).flatten(2).transpose(1, 2)
+            for layer in self.encoder[1:]:
                 x = layer(x)
         else:  # map-shaped mixers
             x = x.transpose(1, 2).reshape(b, -1, h, w)
