@@ -103,3 +103,4 @@ win_b1_tri2_vd_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts70 <E1b overrides> model.en
 win_b1_tri2_hv_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts70 <E1b overrides> model.encoder=triscan model.triscan_streams=hv model.triscan_exchange=false  (--epochs 5; stage 2 item 3, v2 full reach, aec24d9)
 win_b1_tri2_hvd_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts70 <E1b overrides> model.encoder=triscan model.triscan_streams=hvd model.triscan_exchange=false  (--epochs 5; stage 2 item 3, v2 full reach, aec24d9)
 win_b1_tri2_hvd_x_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts70 <E1b overrides> model.encoder=triscan model.triscan_streams=hvd model.triscan_exchange=true  (--epochs 5; stage 2 item 3, v2 full reach, aec24d9)
+win_b1_cells_det_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts70 <E1b overrides> model.head=cells_det  (--epochs 5; stage 2 item 1, plain encoder)
