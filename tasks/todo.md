@@ -252,7 +252,9 @@
       строкой, 5 эпох, 7 468 шагов): val EM 0,401 (A0 0,434, F1 0,383; im2latex 0,372 / oleehyo 0,430), CPE 0,245,
       SCE 0,307 (EM 0,270), SPE 0,117 (EM 0,260); `fontswap` Palatino test_im2latex 0,111 (F1 0,116) — OOD почти как F1,
       свой домен на 1,8 п.п. лучше F1, на 3,3 п.п. хуже A0 (часть — шагов меньше).
-- [ ] F1c `win_v2_fontsdyn_s1` (PROBE_ROOT `D:\MathOCR\probe_fonts_dyn`, выбор шрифта каждую эпоху, p_font 0,5,
-      `augment.font_variants=[train_times.parquet,train_sans.parquet]`) — прервана выключением 24.10 ≈ 11:00,
-      перезапустить: `scratchpad`-скрипт не нужен, команда — как в `scripts/ops/probe_jobs_history.txt` + `--epochs 5`,
-      затем `scripts/diagnostics/fontswap/eval_ckpt.py`.
+- [x] F1c `win_v2_fontsdyn_s1` (PROBE_ROOT `D:\MathOCR\probe_fonts_dyn`, выбор шрифта каждую эпоху, p_font 0,5,
+      `augment.font_variants=[train_times.parquet,train_sans.parquet]`, 7 191 шаг): val EM 0,379, CPE 0,239, SCE 0,324
+      (EM 0,277), SPE 0,113 (EM 0,263); Palatino test_im2latex edit 0,112, **EM 25,1 %** (F1 18,6, F1b 19,1) — свой
+      домен не возвращает, но одна метка в разных шрифтах лучше обобщает на невиданный шрифт.
+- [ ] F1d `win_v2_fontsdyn30_s1`: то же с p_font 0,3 (CM 70 % в среднем) — совместить F1b (свой домен) и F1c
+      (невиданный шрифт); по итогу — рецепт базы для финала.
