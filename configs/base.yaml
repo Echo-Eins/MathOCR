@@ -70,6 +70,8 @@ augment:
   stack_max: 3
   stack_gap: 0.6
   stack_style: l            # l: left-aligned lines, array{l} | rl: aligned at the relation, array{r l} | rows: partners are whole array{r l} blocks, rows merged
+  p_font: 0.0               # per sample and epoch: probability of one of font_variants instead of the original image
+  font_variants: []         # row-aligned train copies in other fonts (data dir), scripts/fonts/build_font_variants.py
 
 train:
   epochs: 15

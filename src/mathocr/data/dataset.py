@@ -49,6 +49,11 @@ class AugmentConfig:
     stack_max: int = 3
     stack_gap: float = 0.6
     stack_style: str = "l"
+    # Font variants (FontVariants): parquet files in the data dir, row-aligned with train.parquet, holding the same
+    # labels rendered in other math fonts (scripts/fonts/build_font_variants.py); each epoch a sample takes one of
+    # them with probability p_font (uniformly), else its original image.
+    p_font: float = 0.0
+    font_variants: tuple[str, ...] = ()
 
 
 class CropStore:
@@ -89,6 +94,88 @@ class CropStore:
 
     def shape(self, i: int, cfg: ImageConfig, jitter: float = 1.0) -> tuple[int, int]:
         return output_shape(int(self.h[i]), int(self.w[i]), float(self.glyph[i]), cfg, jitter)
+
+
+class FontVariants:
+    """The training store plus row-aligned copies of it rendered in other fonts.  Each epoch every sample takes one
+    variant, drawn from ``(seed, epoch)`` for all samples at once: with probability ``p_font`` one of the alternates
+    (uniformly), else the original.  ``for_epoch`` returns a CropStore-like view whose crops and sizes are that
+    epoch's variants, so the sampler's shapes and the loader's images agree."""
+
+    def __init__(self, base: CropStore, alts: Sequence[CropStore], p_font: float, seed: int):
+        for a in alts:
+            if a.uids != base.uids or a.labels != base.labels:
+                raise ValueError("font variants must be row-aligned with the training store")
+        self.base, self.stores, self.p_font, self.seed = base, [base, *alts], p_font, seed
+        self._view: tuple[int, _EpochView] | None = None
+
+    def __len__(self) -> int:
+        return len(self.base)
+
+    # labels are the same in every variant; sizes and crops are not, so only the view (for_epoch) has those
+    @property
+    def labels(self) -> list[str]:
+        return self.base.labels
+
+    @property
+    def vocab(self) -> Vocab | None:
+        return self.base.vocab
+
+    @property
+    def uids(self) -> list[str]:
+        return self.base.uids
+
+    @property
+    def target_offsets(self) -> np.ndarray:
+        return self.base.target_offsets
+
+    def target(self, i: int) -> np.ndarray:
+        return self.base.target(i)
+
+    def choice(self, epoch: int) -> np.ndarray:
+        rng = epoch_rng(self.seed, epoch, 3)
+        n = len(self.base)
+        use = rng.random(n) < self.p_font
+        which = rng.integers(1, len(self.stores), size=n)
+        return np.where(use, which, 0)
+
+    def for_epoch(self, epoch: int) -> _EpochView:
+        if self._view is None or self._view[0] != epoch:
+            self._view = (epoch, _EpochView(self, self.choice(epoch)))
+        return self._view[1]
+
+
+class _EpochView:
+    """One epoch of ``FontVariants``: per-sample crop, size and glyph from the chosen variant; labels and targets
+    from the base store."""
+
+    def __init__(self, variants: FontVariants, choice: np.ndarray):
+        self._variants, self.choice = variants, choice
+        stores = variants.stores
+        self.h = np.choose(choice, [s.h for s in stores])
+        self.w = np.choose(choice, [s.w for s in stores])
+        self.glyph = np.choose(choice, [s.glyph for s in stores])
+
+    def __getattr__(self, name: str):
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self._variants.base, name)
+
+    def __len__(self) -> int:
+        return len(self._variants.base)
+
+    def crop(self, i: int) -> Crop:
+        return self._variants.stores[int(self.choice[i])].crop(i)
+
+    def target(self, i: int) -> np.ndarray:
+        return self._variants.base.target(i)
+
+    def shape(self, i: int, cfg: ImageConfig, jitter: float = 1.0) -> tuple[int, int]:
+        return output_shape(int(self.h[i]), int(self.w[i]), float(self.glyph[i]), cfg, jitter)
+
+
+def _epoch_store(store, epoch: int):
+    return store.for_epoch(epoch) if isinstance(store, FontVariants) else store
 
 
 def _glyph_scale(glyph: float, cfg: ImageConfig) -> float:
@@ -278,12 +365,13 @@ class TrainItems(Dataset):
     def __getitem__(self, key: tuple) -> tuple[torch.Tensor, np.ndarray, int]:
         i, jitter, epoch = key[:3]
         partners = key[3] if len(key) > 3 else ()
+        store = _epoch_store(self.store, epoch)
         if partners:
             idx = (i, *partners)
-            arr = layout(stacked_crop(self.store, idx, self.image_cfg, self.aug_cfg), self.image_cfg, jitter)
-            target = stacked_target(self.store, idx, self.aug_cfg.stack_style)
+            arr = layout(stacked_crop(store, idx, self.image_cfg, self.aug_cfg), self.image_cfg, jitter)
+            target = stacked_target(store, idx, self.aug_cfg.stack_style)
         else:
-            arr, target = layout(self.store.crop(i), self.image_cfg, jitter), self.store.target(i)
+            arr, target = layout(store.crop(i), self.image_cfg, jitter), store.target(i)
         if self.aug_cfg is not None:
             arr = augment(arr, sample_rng(self.seed, epoch, i), self.aug_cfg)
         return to_tensor(arr), target, i
@@ -328,13 +416,14 @@ class ShapeBatchSampler(Sampler[list[tuple[int, float, int]]]):
         else:
             jitters = np.ones(n)
         partners = self._partners(n) if self.train and self.aug_cfg is not None and self.aug_cfg.p_stack > 0 else {}
+        store = _epoch_store(self.store, self.epoch)
         groups: dict[tuple[int, int], list[int]] = defaultdict(list)
         for i in self.indices:
             if i in partners:
-                h, w = stacked_size(self.store, (i, *partners[i]), self.image_cfg, self.aug_cfg)
+                h, w = stacked_size(store, (i, *partners[i]), self.image_cfg, self.aug_cfg)
                 shape = output_shape(h, w, self.image_cfg.target_glyph_px, self.image_cfg, float(jitters[i]))
             else:
-                shape = self.store.shape(i, self.image_cfg, float(jitters[i]))
+                shape = store.shape(i, self.image_cfg, float(jitters[i]))
             groups[shape].append(i)
         order_rng = epoch_rng(self.seed, self.epoch, 1)
         batches = []

@@ -37,7 +37,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from mathocr import determinism
 from mathocr.config import config_hash, load_config
-from mathocr.data.dataset import AugmentConfig, CropStore, ShapeBatchSampler, TrainItems, collate
+from mathocr.data.dataset import AugmentConfig, CropStore, FontVariants, ShapeBatchSampler, TrainItems, collate
 from mathocr.image import ImageConfig
 from mathocr.infer import decode_store
 from mathocr.metrics import text_metrics
@@ -219,9 +219,12 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
         # optimizer, schedule and data order start fresh from this run's seed.
         model.load_state_dict(torch.load(tcfg["init_from"], map_location="cpu", weights_only=False)["model"])
 
-    sampler = ShapeBatchSampler(train_store, icfg, tcfg["pixel_budget"], tcfg["max_batch"], seed, train=True, aug_cfg=aug,
+    train_source = train_store
+    if aug.p_font > 0 and aug.font_variants:  # same labels in other fonts, one variant per sample and epoch
+        train_source = FontVariants(train_store, [CropStore(data_dir / f, vocab) for f in aug.font_variants], aug.p_font, seed)
+    sampler = ShapeBatchSampler(train_source, icfg, tcfg["pixel_budget"], tcfg["max_batch"], seed, train=True, aug_cfg=aug,
                                 max_tokens=mcfg.max_len)
-    items = TrainItems(train_store, icfg, aug, seed)
+    items = TrainItems(train_source, icfg, aug, seed)
     loader = DataLoader(items, batch_sampler=sampler, num_workers=tcfg["workers"],
                         collate_fn=partial(collate, pad_id=vocab.pad_id), pin_memory=device.type == "cuda",
                         worker_init_fn=_worker_init, persistent_workers=False)
