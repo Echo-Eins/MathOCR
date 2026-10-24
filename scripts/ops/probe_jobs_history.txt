@@ -96,3 +96,5 @@ win_v2_fonts_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts (train 50% CM / 25% Times / 
 win_v2_fonts70_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts70 (train 70% CM / 15% Times / 15% sans) train.optimizer=muon train.lr=6.0e-4 model.enc_stride=8x4 image.target_glyph_px=18.0 model.attn_kernel=triton image.max_h=384 image.max_w=1536 model.max_len=512 augment.p_stack=0.1 augment.stack_style=rl  (--epochs 5)
 win_v2_fontsdyn_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts_dyn (per-epoch variants) <E1b overrides> augment.p_font=0.5 augment.font_variants=[train_times.parquet,train_sans.parquet]  (--epochs 5; rerun 24.10 after a shutdown)
 win_v2_fontsdyn30_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts_dyn <E1b overrides> augment.p_font=0.3 augment.font_variants=[train_times.parquet,train_sans.parquet]  (--epochs 5)
+win_b1_triscan_x_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts70 <E1b overrides> model.encoder=triscan model.triscan_exchange=true  (--epochs 5; stage 2 item 3, local version)
+win_b1_triscan_nox_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts70 <E1b overrides> model.encoder=triscan model.triscan_exchange=false  (--epochs 5; stage 2 item 3, local version)
