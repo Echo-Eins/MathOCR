@@ -226,7 +226,8 @@ def sinusoid_1d(n: int, dim: int) -> Tensor:
 
 class DirectionalConv(nn.Module):
     """Depthwise convolutions along the width of a (B, C, H, W) map: causal (each cell sees only cells to its left)
-    or anti-causal (only to its right); kernel ``k`` at dilations 1, 3, 9 -- a reach of most of a line."""
+    or anti-causal (only to its right); kernel ``k`` at dilations 1, 3, 9 summed in parallel -- a reach of
+    (k - 1) * 9 = 54 cells (216 px at stride 4), i.e. local, not a whole line of a long formula."""
 
     def __init__(self, c: int, right: bool, k: int = 7, dilations: tuple[int, ...] = (1, 3, 9)):
         super().__init__()
