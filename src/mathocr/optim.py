@@ -143,7 +143,8 @@ def _feedback_group(model: nn.Module, tcfg: dict) -> tuple[list[dict], set[int]]
 
 def build_optimizer(model: nn.Module, tcfg: dict) -> torch.optim.Optimizer:
     """``train.optimizer``: ``adamw`` (control) or ``muon`` (hidden matrices; embeddings, the
-    one-channel stem, norms, biases and per-action biases stay on AdamW)."""
+    one-channel stem, norms, biases, per-action biases and ``dw_`` parameters -- depthwise kernels and
+    block-diagonal gates, which are not one linear map -- stay on AdamW)."""
 
     lr, wd, kind = tcfg["lr"], tcfg["weight_decay"], tcfg.get("optimizer", "adamw")
     fb_groups, fb_ids = _feedback_group(model, tcfg)
@@ -162,7 +163,7 @@ def build_optimizer(model: nn.Module, tcfg: dict) -> torch.optim.Optimizer:
             in_scope = scope == "all" or (scope == "backbone") == name.startswith("backbone.")
             if _no_decay(name, p):
                 no_decay.append(p)
-            elif name.startswith("backbone.stem") or not in_scope:
+            elif name.startswith("backbone.stem") or not in_scope or ".dw_" in name:
                 decay.append(p)
             else:
                 muon.append(p)

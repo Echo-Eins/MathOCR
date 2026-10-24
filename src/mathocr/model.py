@@ -20,6 +20,8 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
+from mathocr.scan_kernel import linear_scan
+
 
 @dataclass(frozen=True)
 class ModelConfig:
@@ -38,9 +40,13 @@ class ModelConfig:
     # exact shifts, linear in the map size) or "aas_sort" (tokens grouped by
     # sorting on a learned coordinate, windowed attention in that order).
     encoder: str = "transformer"
-    # "triscan": TriScanBlock (causal / anti-causal / diagonal convolutions on the memory map) replaces the first
-    # transformer layer; triscan_exchange: the streams condition each other (start-middle-end anchors, row summaries)
+    # "triscan": TriScanBlock replaces the first transformer layer; triscan_streams: any of h (causal and
+    # anti-causal scans along the rows), v (convolution over the whole height), d (both diagonals, whole length);
+    # triscan_exchange: start-middle-end anchors of v/d modulate the row scans, which run triscan_rounds times,
+    # each fed with the other direction's output
+    triscan_streams: str = "hd"
     triscan_exchange: bool = True
+    triscan_rounds: int = 2
     aas_kernel: bool = False  # fused Triton AAS (deterministic gather-form backward)
     # "sdpa": F.scaled_dot_product_attention everywhere; "triton": fused deterministic attention
     # (attn_kernel.py) for bf16/fp16 CUDA calls with >= ATTN_KERNEL_MIN_KEYS keys (training and the
@@ -224,79 +230,211 @@ def sinusoid_1d(n: int, dim: int) -> Tensor:
 # ------------------------------------------------- linear-cost global mixers (AAS)
 
 
-class DirectionalConv(nn.Module):
-    """Depthwise convolutions along the width of a (B, C, H, W) map: causal (each cell sees only cells to its left)
-    or anti-causal (only to its right); kernel ``k`` at dilations 1, 3, 9 summed in parallel -- a reach of
-    (k - 1) * 9 = 54 cells (216 px at stride 4), i.e. local, not a whole line of a long formula."""
+class RowScan(nn.Module):
+    """A gated linear recurrence along every row of a (B, h, w, d) map, left to right (``reverse=False``: a cell
+    sees only its row's cells to its left, the whole way) or right to left: the RG-LRU of Griffin (De et al.,
+    2024).  A 4-tap depthwise convolution in the scan direction, then per channel
 
-    def __init__(self, c: int, right: bool, k: int = 7, dilations: tuple[int, ...] = (1, 3, 9)):
+        a_t = a ** (c r_t),   h_t = a_t h_{t-1} + sqrt(1 - a_t^2) (i_t * x_t),
+
+    with recurrence and input gates r_t, i_t (block-diagonal, from the gate input) -- the content decides how long
+    to remember; a ** c starts uniform in [0.9, 0.999] (memories of 10-1000 cells).  Parameters named ``dw_`` are
+    trained by AdamW, not Muon (they are not matrices of a linear map)."""
+
+    C = 8.0
+
+    def __init__(self, d: int, heads: int, reverse: bool, taps: int = 4):
         super().__init__()
-        self.right, self.k, self.dilations = right, k, dilations
-        self.convs = nn.ModuleList(nn.Conv2d(c, c, (1, k), dilation=(1, d), groups=c, bias=False) for d in dilations)
+        self.reverse, self.heads, self.taps = reverse, heads, taps
+        self.dw_conv = nn.Parameter(torch.zeros(d, taps))
+        self.dw_gate = nn.Parameter(torch.zeros(2, heads, d // heads, d // heads))  # recurrence, input gate
+        self.gate_bias = nn.Parameter(torch.zeros(2 * d))
+        self.lam = nn.Parameter(torch.zeros(d))
+
+    def init_extra(self) -> None:
+        nn.init.uniform_(self.dw_conv, -self.taps**-0.5, self.taps**-0.5)
+        nn.init.normal_(self.dw_gate, std=self.dw_gate.shape[-1] ** -0.5)
+        nn.init.zeros_(self.gate_bias)
+        with torch.no_grad():
+            a = torch.empty_like(self.lam).uniform_(0.9, 0.999) ** (1.0 / self.C)
+            self.lam.copy_(torch.log(a / (1 - a)))
+
+    def forward(self, u: Tensor, v: Tensor) -> Tensor:
+        """u: gate input, v: values, both (B, h, w, d) -> (B, h, w, d)."""
+        b, h, w, d = v.shape
+        k = self.taps
+        vp = F.pad(v, (0, 0, 0, k - 1) if self.reverse else (0, 0, k - 1, 0))
+        conv = self.dw_conv.to(v.dtype)
+        x = sum(conv[:, j] * (vp[:, :, j : j + w] if self.reverse else vp[:, :, k - 1 - j : k - 1 - j + w])
+                for j in range(k))
+        g = torch.einsum("bhwnk,gnkj->gbhwnj", u.reshape(b, h, w, self.heads, -1), self.dw_gate.to(u.dtype))
+        g = torch.sigmoid(g.reshape(2, b, h, w, d).float() + self.gate_bias.view(2, 1, 1, 1, d))
+        log_a = -self.C * F.softplus(-self.lam) * g[0]
+        bx = torch.sqrt((-torch.expm1(2 * log_a)).clamp_min(1e-6)) * g[1] * x.float()
+        hs = linear_scan(torch.exp(log_a).reshape(b * h, w, d), bx.reshape(b * h, w, d), self.reverse)
+        return hs.view(b, h, w, d).to(v.dtype)
+
+
+class ColumnConv(nn.Module):
+    """A depthwise convolution over the whole height of a (B, h, w, d) map: every cell gathers every row of its
+    column and of the columns +-1, with a weight per channel, row offset and side (up and down differ: numerator
+    and denominator, superscript and subscript).  Offsets |dy| <= ``near`` are free taps; beyond, each side is a
+    mix of decaying exponentials (2-16 rows), so the far field stays smooth and reaches any height.  Computed
+    exactly as per-channel Toeplitz matrix products."""
+
+    def __init__(self, d: int, near: int = 8, width: int = 3, taus: tuple[float, ...] = (2.0, 4.0, 8.0, 16.0)):
+        super().__init__()
+        self.near, self.width = near, width
+        self.dw_near = nn.Parameter(torch.zeros(d, width, 2 * near + 1))
+        self.dw_tail = nn.Parameter(torch.zeros(d, width, 2, len(taus)))  # (above, below) x scales
+        self.register_buffer("taus", torch.tensor(taus), persistent=False)
+
+    def init_extra(self) -> None:
+        nn.init.normal_(self.dw_near, std=(self.width * (2 * self.near + 1)) ** -0.5)
+        nn.init.zeros_(self.dw_tail)
+
+    def kernel(self, h: int) -> Tensor:
+        """(d, width, 2h - 1): weight of the source dy = -(h - 1) .. h - 1 rows away (negative: above)."""
+        n = self.near
+        if h - 1 <= n:
+            return self.dw_near[..., n - (h - 1) : n + h]
+        dist = torch.arange(1, h - n, device=self.taus.device, dtype=torch.float32)
+        far = torch.einsum("dwst,lt->dwsl", self.dw_tail, torch.exp(-dist[:, None] / self.taus[None]))
+        return torch.cat([far[:, :, 0].flip(-1), self.dw_near, far[:, :, 1]], dim=-1)
 
     def forward(self, x: Tensor) -> Tensor:
+        b, h, w, d = x.shape
+        rows = torch.arange(h, device=x.device)
+        toeplitz = self.kernel(h)[:, :, rows[None, :] - rows[:, None] + h - 1].to(x.dtype)  # (d, width, h, h)
+        xt = x.permute(3, 1, 0, 2).reshape(d, h, b * w)
         out = 0
-        for conv, d in zip(self.convs, self.dilations):
-            pad = (self.k - 1) * d
-            out = out + conv(F.pad(x, (0, pad) if self.right else (pad, 0)))
-        return out
+        for j in range(self.width):
+            z = torch.bmm(toeplitz[:, j], xt).view(d, h, b, w)  # what column c contributes to its own column
+            off = j - self.width // 2  # target column c reads source column c + off
+            if off > 0:
+                z = F.pad(z[..., off:], (0, off))
+            elif off < 0:
+                z = F.pad(z[..., :off], (-off, 0))
+            out = out + z
+        return out.permute(2, 1, 3, 0)
+
+
+def shear(x: Tensor, k: int) -> Tensor:
+    """(B, h, w, d) -> (B, h, w + k (h - 1), d) with row r moved right by k r: the lines c + k r = const (up-right,
+    k cells across per row) become columns.  Pad, flatten and re-view -- no gather."""
+    b, h, w, d = x.shape
+    width = w + k * h
+    flat = F.pad(x, (0, 0, 0, k * h)).reshape(b, h * width, d)
+    return flat[:, : h * (width - k)].reshape(b, h, width - k, d)
+
+
+def unshear(y: Tensor, k: int, w: int) -> Tensor:
+    """Inverse of ``shear``."""
+    b, h, wide, d = y.shape
+    flat = F.pad(F.pad(y, (0, 0, 0, k)).reshape(b, h * (wide + k), d), (0, 0, 0, h * k))
+    return flat.reshape(b, h, wide + 2 * k, d)[:, :, :w]
 
 
 class DiagonalConv(nn.Module):
-    """Depthwise 2D convolution restricted to the two visual diagonals (up-right and down-right, both ways): the
-    super-/subscript relations.  Memory cells are 8 px tall and 4 px wide, so a 45-degree line moves two cells
-    sideways per cell up; the kernel (5 x 9) keeps the taps with |dx| = 2 |dy| (+-1)."""
+    """Both diagonal families of a (B, h, w, d) map over their whole length, both ways: the up-right lines
+    (superscripts, nested exponents, upper limits) and the down-right ones (subscripts, lower limits).  A memory
+    cell is 8 px tall and 4 px wide, so 45 degrees is two cells across per row; each family is sheared into
+    columns and read by a ``ColumnConv`` (columns +-1: slopes 1-3 cells per row near the cell, 45 degrees far)."""
 
-    def __init__(self, c: int):
+    def __init__(self, d: int):
         super().__init__()
-        self.conv = nn.Conv2d(c, c, (5, 9), padding=(2, 4), groups=c, bias=False)
-        dy, dx = torch.meshgrid(torch.arange(-2, 3), torch.arange(-4, 5), indexing="ij")
-        self.register_buffer("mask", ((dx.abs() - 2 * dy.abs()).abs() <= 1).float()[None, None], persistent=False)
+        self.rising, self.falling = ColumnConv(d), ColumnConv(d)
 
     def forward(self, x: Tensor) -> Tensor:
-        return F.conv2d(x, self.conv.weight * self.mask.to(self.conv.weight.dtype), padding=(2, 4), groups=x.shape[1])
+        w = x.shape[2]
+        up = unshear(self.rising(shear(x, 2)), 2, w)
+        down = unshear(self.falling(shear(x.flip(1), 2)), 2, w).flip(1)
+        return up + down
+
+
+def thirds(y: Tensor, ink: Tensor) -> Tensor:
+    """(B, 3d): means of ``y`` (B, h, w, d) over the ink cells of the first, middle and last third of the formula's
+    ink extent along the width -- its start, middle and end, wherever it sits on the canvas."""
+    b, h, w, d = y.shape
+    cols = ink.any(1)
+    has = cols.any(1)
+    first = torch.where(has, cols.float().argmax(1), 0)
+    last = torch.where(has, w - 1 - cols.flip(1).float().argmax(1), w - 1)
+    pos = (torch.arange(w, device=y.device)[None] - first[:, None]).float() / (last - first + 1).float()[:, None]
+    member = ((pos * 3).floor()[:, None] == torch.arange(3, device=y.device)[None, :, None]) & (pos >= 0)[:, None]
+    cells = ink | ~has[:, None, None]  # a blank image: all its cells
+    wgt = (member[:, :, None, :] & cells[:, None]).to(y.dtype)  # (B, 3, h, w)
+    mean = torch.einsum("bkhw,bhwd->bkd", wgt, y) / wgt.sum((2, 3)).clamp_min(1.0)[..., None]
+    return mean.reshape(b, 3 * d)
 
 
 class TriScanBlock(nn.Module):
-    """Three-kernel mixer on the memory map (the assignment owner's design): a causal and an anti-causal convolution
-    along the reading direction and a bidirectional diagonal one.  The diagonal stream's view of the formula's start,
-    middle and end (its mean over the left, middle and right third of the map) tells the two directional streams
-    what to look for beyond the obvious (FiLM), and -- with ``exchange`` -- each directional stream is run a second
-    time modulated by the other's whole-row summary (the causal stream's last column, the anti-causal's first).
-    Without ``exchange`` the three streams are independent single passes."""
+    """The three-direction mixer on the memory map (the assignment owner's design), at full reach.  Streams, any
+    non-empty subset of ``streams``:
 
-    def __init__(self, d: int, dropout: float, exchange: bool, ff_mult: int = 3):
+      h -- two RG-LRU scans along the rows: causal (left to right) and anti-causal (right to left), each over the
+           whole row;
+      v -- a convolution over the whole height of the column (``ColumnConv``), up and down separately;
+      d -- both diagonal families over their whole length, both ways (``DiagonalConv``).
+
+    The streams read shared values and are gated by a shared GELU branch (Griffin's recurrent block), then mixed by
+    one projection; a feed-forward layer follows.  With ``exchange`` (needs h and v or d): the geometric streams'
+    view of the formula's start, middle and end (``thirds`` over the ink extent) FiLM-modulates the input of the
+    two row scans -- what to look for beyond the obvious -- and the row scans run ``rounds`` times, each round fed
+    with the other direction's previous output at every cell (zero-initialized: starts as the plain block)."""
+
+    def __init__(self, d: int, heads: int, dropout: float, streams: str, exchange: bool, rounds: int,
+                 ff_mult: int = 3):
         super().__init__()
-        self.exchange = exchange
-        self.n1, self.n2 = ChannelRMSNorm2d(d), ChannelRMSNorm2d(d)
-        self.causal, self.anti, self.diag = DirectionalConv(d, right=False), DirectionalConv(d, right=True), DiagonalConv(d)
-        self.proj = nn.Conv2d(3 * d, d, 1)
-        self.ff = nn.Sequential(nn.Conv2d(d, ff_mult * d, 1), nn.GELU(), nn.Dropout(dropout), nn.Conv2d(ff_mult * d, d, 1))
+        assert streams and set(streams) <= set("hvd"), streams
+        assert not exchange or ("h" in streams and set(streams) & set("vd")), "exchange needs h and v or d"
+        self.streams, self.exchange, self.rounds = streams, exchange, rounds
+        self.n1, self.n2 = nn.LayerNorm(d), nn.LayerNorm(d)
+        self.value, self.gate = nn.Linear(d, d), nn.Linear(d, d)
+        if "h" in streams:
+            self.causal, self.anti = RowScan(d, heads, reverse=False), RowScan(d, heads, reverse=True)
+        if "v" in streams:
+            self.vertical = ColumnConv(d)
+        if "d" in streams:
+            self.diagonal = DiagonalConv(d)
+        n_out = 2 * ("h" in streams) + ("v" in streams) + ("d" in streams)
+        self.out = nn.Linear(n_out * d, d)
+        self.ff = FeedForward(d, ff_mult, dropout)
         self.drop = nn.Dropout(dropout)
         if exchange:
-            self.anchor = nn.Sequential(nn.Linear(3 * d, d // 2), nn.GELU(), nn.Linear(d // 2, 4 * d))
-            self.from_anti, self.from_causal = nn.Conv2d(d, d, 1), nn.Conv2d(d, d, 1)
+            self.anchor = nn.Sequential(nn.Linear(3 * d, d // 4), nn.GELU(), nn.Linear(d // 4, 4 * d))
+            self.to_causal, self.to_anti = nn.Linear(d, d), nn.Linear(d, d)
 
     def init_extra(self) -> None:
-        if self.exchange:  # start as the plain three-stream block: zero modulation
-            nn.init.zeros_(self.anchor[2].weight)
-            nn.init.zeros_(self.anchor[2].bias)
-            for m in (self.from_anti, self.from_causal):
+        if self.exchange:  # start as the plain block: no modulation, nothing exchanged
+            for m in (self.anchor[2], self.to_causal, self.to_anti):
                 nn.init.zeros_(m.weight)
                 nn.init.zeros_(m.bias)
 
-    def forward(self, x: Tensor) -> Tensor:
-        h = self.n1(x)
-        yd = self.diag(h)
-        yc, ya = self.causal(h), self.anti(h)
-        if self.exchange:
-            thirds = torch.tensor_split(yd, 3, dim=-1)
-            g = torch.cat([t.mean(dim=(-2, -1)) for t in thirds], dim=-1)  # (B, 3d): start, middle, end
-            gc, bc, ga, ba = self.anchor(g)[..., None, None].chunk(4, dim=1)
-            sa, sc = ya[..., :1], yc[..., -1:]  # whole-row summaries, broadcast along the row
-            yc = self.causal(h * (1 + torch.tanh(gc + self.from_anti(sa))) + bc)
-            ya = self.anti(h * (1 + torch.tanh(ga + self.from_causal(sc))) + ba)
-        x = x + self.drop(self.proj(torch.cat([yc, ya, yd], dim=1)))
+    def forward(self, x: Tensor, ink: Tensor) -> Tensor:
+        """x (B, h, w, d), ink (B, h, w) bool -> (B, h, w, d)."""
+        u = self.n1(x)
+        v = self.value(u)
+        geo = []
+        if "v" in self.streams:
+            geo.append(self.vertical(v))
+        if "d" in self.streams:
+            geo.append(self.diagonal(v))
+        outs = []
+        if "h" in self.streams:
+            if self.exchange:
+                film = self.anchor(thirds(sum(geo), ink))[:, None, None]
+                gc, bc, ga, ba = film.chunk(4, dim=-1)
+                uc, ua = u * (1 + torch.tanh(gc)) + bc, u * (1 + torch.tanh(ga)) + ba
+                oc, oa = self.causal(uc, self.value(uc)), self.anti(ua, self.value(ua))
+                for _ in range(self.rounds - 1):
+                    uc2, ua2 = uc + self.to_causal(oa), ua + self.to_anti(oc)
+                    oc, oa = self.causal(uc2, self.value(uc2)), self.anti(ua2, self.value(ua2))
+            else:
+                oc, oa = self.causal(u, v), self.anti(u, v)
+            outs += [oc, oa]
+        g = F.gelu(self.gate(u))
+        x = x + self.drop(self.out(torch.cat([o * g for o in outs + geo], dim=-1)))
         return x + self.drop(self.ff(self.n2(x)))
 
 
@@ -1026,7 +1164,8 @@ class Im2Latex(nn.Module):
             blocks = (EncoderLayer(d, cfg.n_heads, cfg.ff_mult, cfg.dropout, cfg.attn_kernel)
                       for _ in range(cfg.enc_layers))
         elif cfg.encoder == "triscan":  # the three-kernel mixer in place of the first transformer layer
-            blocks = [TriScanBlock(d, cfg.dropout, cfg.triscan_exchange)] + [
+            blocks = [TriScanBlock(d, cfg.n_heads, cfg.dropout, cfg.triscan_streams, cfg.triscan_exchange,
+                                   cfg.triscan_rounds)] + [
                 EncoderLayer(d, cfg.n_heads, cfg.ff_mult, cfg.dropout, cfg.attn_kernel) for _ in range(cfg.enc_layers - 1)]
         elif cfg.encoder == "aas":
             blocks = (AASBlock(d, cfg.n_heads, cfg.local_expansion, cfg.aas_kernel) for _ in range(cfg.enc_layers))
@@ -1118,8 +1257,9 @@ class Im2Latex(nn.Module):
         if self.cfg.encoder == "transformer":
             for layer in self.encoder:
                 x = layer(x)
-        elif self.cfg.encoder == "triscan":  # map-shaped first block, then sequence layers
-            x = self.encoder[0](x.transpose(1, 2).reshape(b, -1, h, w)).flatten(2).transpose(1, 2)
+        elif self.cfg.encoder == "triscan":  # map-shaped first block (channels last), then sequence layers
+            ink = F.max_pool2d(images, (images.shape[-2] // h, images.shape[-1] // w))[:, 0] > 0.5
+            x = self.encoder[0](x.reshape(b, h, w, -1), ink).reshape(b, h * w, -1)
             for layer in self.encoder[1:]:
                 x = layer(x)
         else:  # map-shaped mixers

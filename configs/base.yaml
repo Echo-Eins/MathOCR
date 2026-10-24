@@ -34,7 +34,9 @@ model:
   dropout: 0.1
   max_len: 256
   encoder: transformer     # transformer | aas | aas_sort (linear-cost global mixers) | triscan (TriScanBlock first), model.py
-  triscan_exchange: true   # triscan: the causal / anti-causal / diagonal streams condition each other
+  triscan_streams: hd      # triscan: h (row scans both ways), v (whole-height conv), d (both diagonals)
+  triscan_exchange: true   # triscan: v/d start-middle-end anchors modulate the row scans; rounds of exchange
+  triscan_rounds: 2
   local_expansion: 1.5     # AAS local residual width (12 d^2 per block, same as a Transformer layer)
   sort_window: 32
   attn_kernel: sdpa        # sdpa | triton (fused deterministic attention for long key sets, attn_kernel.py)
