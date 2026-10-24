@@ -245,3 +245,14 @@
 - [x] 0в: верификатор с рендером — фильтр валидности: SCE CDM +0,016 / +4 п.п. CDM = 1, CPE +0,020; свои тесты ≈ 0.
 - [ ] Следующее по плану (этап 1): новая база шрифтов (доля CM 0,7 / выбор шрифта каждую эпоху), затем H1 `cells_det`.
 - [ ] Финал: фильтр «собирается + размер» поверх лучей — отдельной строкой отчёта.
+
+## 15. Этап 1 (2026-10-24) — база шрифтов
+
+- [x] F1b `win_v2_fonts70_s1` (PROBE_ROOT `D:\MathOCR\probe_fonts70`, CM 70 / Times 15 / рубленый 15, закреплено за
+      строкой, 5 эпох, 7 468 шагов): val EM 0,401 (A0 0,434, F1 0,383; im2latex 0,372 / oleehyo 0,430), CPE 0,245,
+      SCE 0,307 (EM 0,270), SPE 0,117 (EM 0,260); `fontswap` Palatino test_im2latex 0,111 (F1 0,116) — OOD почти как F1,
+      свой домен на 1,8 п.п. лучше F1, на 3,3 п.п. хуже A0 (часть — шагов меньше).
+- [ ] F1c `win_v2_fontsdyn_s1` (PROBE_ROOT `D:\MathOCR\probe_fonts_dyn`, выбор шрифта каждую эпоху, p_font 0,5,
+      `augment.font_variants=[train_times.parquet,train_sans.parquet]`) — прервана выключением 24.10 ≈ 11:00,
+      перезапустить: `scratchpad`-скрипт не нужен, команда — как в `scripts/ops/probe_jobs_history.txt` + `--epochs 5`,
+      затем `scripts/diagnostics/fontswap/eval_ckpt.py`.
