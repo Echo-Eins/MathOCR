@@ -26,6 +26,10 @@ import argparse
 import hashlib
 import json
 import os
+
+# Before torch initializes CUDA: expandable segments keep the caching allocator from fragmenting into the whole
+# card across the stand's many batch shapes (the final lane sets the same).
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import shutil
 import sys
 import time

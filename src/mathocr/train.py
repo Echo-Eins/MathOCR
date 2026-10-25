@@ -243,6 +243,11 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
     det = determinism.configure(device)
     determinism.seed_everything(seed)
     tcfg, icfg = cfg["train"], ImageConfig(**cfg["image"])
+    if device.type == "cuda" and tcfg.get("cuda_memory_fraction"):
+        # A cap on this process's share of video memory: past it the caching allocator frees its cache and then
+        # raises OutOfMemoryError, instead of the driver silently paging into system RAM (on this laptop that
+        # path ended in DPC_WATCHDOG_VIOLATION blue screens, HANDOFF section 7).
+        torch.cuda.set_per_process_memory_fraction(float(tcfg["cuda_memory_fraction"]), device)
     aug = AugmentConfig(**{k: tuple(v) if isinstance(v, list) else v for k, v in cfg["augment"].items()})
     data_dir = Path(cfg["data"]["out_dir"])
     manifest = json.loads((data_dir / "manifest.json").read_text())

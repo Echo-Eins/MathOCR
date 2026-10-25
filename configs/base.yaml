@@ -122,3 +122,4 @@ train:
   val_decode_samples: 2000
   eval_pixel_budget: 2000000
   eval_max_batch: 64
+  cuda_memory_fraction: 0.85   # cap on this process's video memory: an OOM error instead of paging into system RAM
