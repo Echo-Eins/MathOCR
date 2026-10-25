@@ -48,7 +48,9 @@ def test_inverted_and_transparent_inputs():
                                      {"deform_layers": 2},
                                      {"enc_stride": "8x4", "ring_bias": True, "coverage": True},
                                      {"attn_gate": "head", "qk_norm": True, "value_residual": True},
-                                     {"attn_gate": "elem", "value_residual": True, "ring_bias": True, "coverage": True}])
+                                     {"attn_gate": "elem", "value_residual": True, "ring_bias": True, "coverage": True},
+                                     {"dense_memory": True, "fine_memory": True, "cnn_blur": True, "enc_stride": "8x4"},
+                                     {"encoder": "triscan", "dense_memory": True}])
 def test_cached_greedy_equals_full_forward(variant):
     torch.manual_seed(0)
     m = Im2Latex(ModelConfig(vocab_size=50, cnn_channels=(16, 16, 32, 32), cnn_blocks=(1, 1, 1, 1),
@@ -59,7 +61,8 @@ def test_cached_greedy_equals_full_forward(variant):
                 f.ring_table.normal_(0, 1.0)
                 f.coverage_gamma.fill_(0.5)
     for name, p in m.named_parameters():  # gates and value shares start neutral: make them act
-        if ".out_gate." in name or name.endswith(".v_mix") or name.endswith((".q_norm.weight", ".k_norm.weight")):
+        if (".out_gate." in name or name.endswith((".v_mix", ".q_norm.weight", ".k_norm.weight"))
+                or name == "dense_gain"):
             with torch.no_grad():
                 p.normal_(0, 1.0)
     x = torch.rand(3, 1, 64, 160)

@@ -96,15 +96,43 @@ class ModelConfig:
     attn_gate: str = "none"
     qk_norm: bool = False
     value_residual: bool = False
+    # ``cnn_blur``: anti-aliased downsampling in the CNN (Zhang 2019): every strided convolution runs at stride 1 and
+    # is followed by a fixed binomial low-pass and the subsampling (BlurPool), so a sub-pixel shift of the render
+    # barely moves the features.  Encoder -> decoder skips: ``dense_memory`` -- every decoder layer reads its own
+    # mix of all encoder levels (the CNN's projection and every encoder block's output, each layer-normalized, with
+    # per-channel gains starting at zero: the plain final memory at the start; transparent attention, Bapna et al.
+    # 2018); ``fine_memory`` -- the CNN's stride-4 stage map, projected, joins the memory of every cross-attention
+    # as extra keys, past the encoder (twice the cells of the 8x4 memory).
+    cnn_blur: bool = False
+    dense_memory: bool = False
+    fine_memory: bool = False
 
 
 # --------------------------------------------------------------------------- CNN
 
 
-class BasicBlock(nn.Module):
-    def __init__(self, c_in: int, c_out: int, stride: tuple[int, int]):
+class BlurPool(nn.Module):
+    """Anti-aliased subsampling (Zhang 2019): a fixed binomial [1, 2, 1] / 4 low-pass along each subsampled axis,
+    then every ``stride``-th pixel (zero padding: outside the image is paper or a zero activation)."""
+
+    def __init__(self, c: int, stride: tuple[int, int]):
         super().__init__()
-        self.conv1 = nn.Conv2d(c_in, c_out, 3, stride=stride, padding=1, bias=False)
+        self.c, self.stride = c, stride
+        taps = [torch.tensor([1.0, 2.0, 1.0]) / 4 if s > 1 else torch.ones(1) for s in stride]
+        kernel = (taps[0][:, None] * taps[1][None, :]).expand(c, 1, len(taps[0]), len(taps[1])).contiguous()
+        self.register_buffer("kernel", kernel, persistent=False)
+
+    def forward(self, x: Tensor) -> Tensor:
+        pad = (self.kernel.shape[-2] // 2, self.kernel.shape[-1] // 2)
+        return F.conv2d(x, self.kernel.to(x.dtype), stride=self.stride, padding=pad, groups=self.c)
+
+
+class BasicBlock(nn.Module):
+    def __init__(self, c_in: int, c_out: int, stride: tuple[int, int], blur: bool = False):
+        super().__init__()
+        # blur: the strided convolution runs at stride 1, then BlurPool subsamples after the ReLU (ConvBlurPool)
+        self.blur = BlurPool(c_out, stride) if blur and stride != (1, 1) else None
+        self.conv1 = nn.Conv2d(c_in, c_out, 3, stride=(1, 1) if self.blur is not None else stride, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(c_out)
         self.conv2 = nn.Conv2d(c_out, c_out, 3, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(c_out)
@@ -119,6 +147,8 @@ class BasicBlock(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         y = F.relu(self.bn1(self.conv1(x)))
+        if self.blur is not None:
+            y = self.blur(y)
         y = self.bn2(self.conv2(y))
         return F.relu(y + (x if self.skip is None else self.skip(x)))
 
@@ -170,18 +200,19 @@ class ConvBackbone(nn.Module):
                     "8x4": ((1, 1), (2, 2), (2, 1), (1, 1))}
 
     def __init__(self, channels: tuple[int, ...], blocks: tuple[int, ...], rings: bool = False, inject: bool = False,
-                 stride: str = "16x8"):
+                 stride: str = "16x8", blur: bool = False):
         super().__init__()
         self.STRIDES = self.STRIDE_PLANS[stride]
         assert len(channels) == len(blocks) == len(self.STRIDES)
         self.stem = nn.Sequential(
-            nn.Conv2d(1, channels[0], 3, stride=2, padding=1, bias=False),
+            nn.Conv2d(1, channels[0], 3, stride=1 if blur else 2, padding=1, bias=False),
             nn.BatchNorm2d(channels[0]),
             nn.ReLU(inplace=True),
+            *([BlurPool(channels[0], (2, 2))] if blur else []),
         )
         stages, c_in = [], channels[0]
         for c_out, n, stride in zip(channels, blocks, self.STRIDES):
-            layers = [BasicBlock(c_in, c_out, stride)]
+            layers = [BasicBlock(c_in, c_out, stride, blur)]
             layers += [BasicBlock(c_out, c_out, (1, 1)) for _ in range(n - 1)]
             stages.append(nn.Sequential(*layers))
             c_in = c_out
@@ -214,14 +245,15 @@ class ConvBackbone(nn.Module):
         return y
 
 
-def sinusoid_2d(h: int, w: int, dim: int, device: torch.device) -> Tensor:
-    """(h*w, dim) fixed encoding: first half encodes rows, second half columns."""
+def sinusoid_2d(h: int, w: int, dim: int, device: torch.device, sy: float = 1.0, sx: float = 1.0) -> Tensor:
+    """(h*w, dim) fixed encoding: first half encodes rows, second half columns (row r at position r * sy, column
+    c at c * sx: a finer map in the units of the memory grid)."""
 
     assert dim % 4 == 0
     quarter = dim // 4
     freq = torch.exp(torch.arange(quarter, device=device, dtype=torch.float32) * (-math.log(10000.0) / quarter))
-    ys = torch.arange(h, device=device, dtype=torch.float32)[:, None] * freq
-    xs = torch.arange(w, device=device, dtype=torch.float32)[:, None] * freq
+    ys = (torch.arange(h, device=device, dtype=torch.float32) * sy)[:, None] * freq
+    xs = (torch.arange(w, device=device, dtype=torch.float32) * sx)[:, None] * freq
     pe_y = torch.cat([ys.sin(), ys.cos()], dim=1)[:, None, :].expand(h, w, 2 * quarter)
     pe_x = torch.cat([xs.sin(), xs.cos()], dim=1)[None, :, :].expand(h, w, 2 * quarter)
     return torch.cat([pe_y, pe_x], dim=2).reshape(h * w, dim)
@@ -1208,7 +1240,8 @@ class Im2Latex(nn.Module):
         super().__init__()
         self.cfg = cfg
         d = cfg.d_model
-        self.backbone = ConvBackbone(cfg.cnn_channels, cfg.cnn_blocks, cfg.rings, cfg.inject, cfg.enc_stride)
+        self.backbone = ConvBackbone(cfg.cnn_channels, cfg.cnn_blocks, cfg.rings, cfg.inject, cfg.enc_stride,
+                                     cfg.cnn_blur)
         self.proj = nn.Linear(self.backbone.out_channels, d)
         self.enc_drop = nn.Dropout(cfg.dropout)
         attn = (cfg.attn_kernel, cfg.attn_gate, cfg.qk_norm)
@@ -1262,12 +1295,23 @@ class Im2Latex(nn.Module):
             self.head_mix = LayerMix(d, cfg.dec_layers) if cfg.head == "cells_ml" else None
             self.head_read = MemoryReread(d, cfg.n_heads) if cfg.head == "cells_vis" else None
             self.head_det = DetectorMap(d, cfg.vocab_size) if cfg.head == "cells_det" else None
+            if (cfg.dense_memory or cfg.fine_memory) and cfg.encoder not in ("transformer", "triscan"):
+                raise ValueError("dense / fine memory need a sequence encoder (transformer or triscan)")
+            # dense_memory: the encoder's input and every block output but the last (that one is the memory itself)
+            self.dense_norm = (nn.ModuleList(nn.LayerNorm(d) for _ in range(cfg.enc_layers))
+                               if cfg.dense_memory else None)
+            self.dense_gain = (nn.Parameter(torch.zeros(cfg.dec_layers * cfg.enc_layers * d))  # 1D: AdamW, no decay
+                               if cfg.dense_memory else None)
+            self.fine_proj = nn.Linear(cfg.cnn_channels[1], d) if cfg.fine_memory else None  # the stride-4 stage
+            self.fine_norm = nn.LayerNorm(d) if cfg.fine_memory else None
+        self._levels: list[Tensor] | None = None  # dense_memory: the normalized encoder levels of the last encode
+        self._fine: Tensor | None = None  # fine_memory: the stride-4 tokens of the last encode
         self._readout: dict = {}  # side inputs of the readout, left by _decode for _logits
         self._det_map: Tensor | None = None  # (B, N, V) class evidence of the memory (cells_det), set by _memory_kv
         self._init_weights()
 
     LATE = ("count.", "count_proj.", "depth_embed.", "fovea.", "fovea_read.", "feedback.", "deform.", "dir_embed.",
-            "head.", "head_mix.", "head_read.", "head_det.")  # optional parts, initialized after everything else
+            "head.", "head_mix.", "head_read.", "head_det.", "dense_norm.", "fine_proj.", "fine_norm.")  # optional parts, initialized after everything else
 
     def _init_weights(self) -> None:
         for name, p in self.named_parameters():  # attention gates start at zero (init_extra), drawing nothing
@@ -1299,32 +1343,54 @@ class Im2Latex(nn.Module):
 
         if self.cfg.coarse > 1:
             images = F.avg_pool2d(images, self.cfg.coarse)
-        stages: list | None = [] if feats is not None else None
+        stages: list | None = [] if feats is not None or self.fine_proj is not None else None
         f = self.backbone(images, stages)
         if feats is not None:
             feats.extend(stages[1:3])
         b, c, h, w = f.shape
         x = self.proj(f.flatten(2).transpose(1, 2))
         x = self.enc_drop(x + sinusoid_2d(h, w, self.cfg.d_model, x.device).to(x.dtype))
+        if self.fine_proj is not None:  # the stride-4 map, positioned in memory-grid units
+            g = stages[1]
+            hf, wf = g.shape[-2:]
+            pos = sinusoid_2d(hf, wf, self.cfg.d_model, x.device, h / hf, w / wf).to(x.dtype)
+            self._fine = self.fine_norm(self.enc_drop(self.fine_proj(g.flatten(2).transpose(1, 2)) + pos))
+        levels = [] if self.dense_norm is not None else None
         if self.cfg.encoder == "transformer":
             for layer in self.encoder:
+                if levels is not None:
+                    levels.append(x)
                 x = layer(x)
         elif self.cfg.encoder == "triscan":  # map-shaped first block (channels last), then sequence layers
             ink = F.max_pool2d(images, (images.shape[-2] // h, images.shape[-1] // w))[:, 0] > 0.5
+            if levels is not None:
+                levels.append(x)
             x = self.encoder[0](x.reshape(b, h, w, -1), ink).reshape(b, h * w, -1)
             for layer in self.encoder[1:]:
+                if levels is not None:
+                    levels.append(x)
                 x = layer(x)
         else:  # map-shaped mixers
             x = x.transpose(1, 2).reshape(b, -1, h, w)
             for layer in self.encoder:
                 x = layer(x)
             x = x.flatten(2).transpose(1, 2)
+        if levels is not None:
+            self._levels = [norm(lv) for norm, lv in zip(self.dense_norm, levels)]
         return self.enc_norm(x)
 
     def _memory_kv(self, memory: Tensor) -> list[tuple[Tensor, Tensor]]:
         if self.head_det is not None:
             self._det_map = self.head_det(memory)
-        return [layer.cross_attn.project_kv(memory) for layer in self.decoder]
+        levels, fine = self._levels, self._fine
+        self._levels = self._fine = None  # taken: big tensors, not kept between calls
+        mems = [memory] * len(self.decoder)
+        if levels is not None:  # each decoder layer: the memory plus its own gains on every earlier level
+            gain = self.dense_gain.view(len(self.decoder), len(levels), -1).to(memory.dtype)
+            mems = [memory + sum(gain[i, j] * lv for j, lv in enumerate(levels)) for i in range(len(self.decoder))]
+        if fine is not None:
+            mems = [torch.cat([m, fine.to(m.dtype)], dim=1) for m in mems]
+        return [layer.cross_attn.project_kv(m) for layer, m in zip(self.decoder, mems)]
 
     def _embed(self, tokens: Tensor, offset: int, depth: Tensor | None = None,
                direction: Tensor | None = None) -> Tensor:

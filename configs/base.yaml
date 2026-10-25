@@ -63,6 +63,9 @@ model:
   attn_gate: none          # none | head | elem: sigmoid gate on every attention output (zero-init: half output)
   qk_norm: false           # RMSNorm of queries and keys per head (learned gains)
   value_residual: false    # decoder self-attention values of layers >= 1 mixed with layer 0's (learned share)
+  cnn_blur: false          # anti-aliased CNN downsampling: stride-1 convolution, binomial low-pass, subsample (BlurPool)
+  dense_memory: false      # every decoder layer reads its own mix of all encoder levels (zero-init gains: plain memory)
+  fine_memory: false       # the CNN's stride-4 map joins every cross-attention as extra keys, past the encoder
 
 augment:
   scale_log_range: 0.29    # glyph-size jitter exp(U(-r, r)) = 0.75x .. 1.34x

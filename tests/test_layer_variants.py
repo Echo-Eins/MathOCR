@@ -92,3 +92,43 @@ def test_training_with_polar_normuon_is_reproducible(tiny_config, tmp_path):
     a = torch.load(tmp_path / "a" / "checkpoints" / "last.pt", map_location="cpu", weights_only=False)["model"]
     b = torch.load(tmp_path / "b" / "checkpoints" / "last.pt", map_location="cpu", weights_only=False)["model"]
     assert all(torch.equal(a[k], b[k]) for k in a)
+
+
+SKIPS = {"dense_memory": True, "fine_memory": True, "cnn_blur": True, "enc_stride": "8x4"}
+
+
+def test_skips_leave_shared_initialization_unchanged():
+    plain = _model(enc_stride="8x4").state_dict()
+    m = _model(**SKIPS).state_dict()
+    assert set(plain) < set(m)
+    assert all(torch.equal(plain[k], m[k]) for k in plain)
+
+
+def test_dense_memory_starts_as_the_plain_memory():
+    plain, dense = _model().eval(), _model(dense_memory=True).eval()
+    dense.load_state_dict({**dense.state_dict(), **plain.state_dict()})
+    x, tok = torch.rand(2, 1, 32, 64), torch.randint(4, 40, (2, 7))
+    with torch.no_grad():
+        assert torch.allclose(dense(x, tok), plain(x, tok), atol=1e-6)
+        assert dense._levels is None and dense._fine is None  # taken by the decoder, not kept
+
+
+def test_blur_keeps_every_shape():
+    for stride in ("16x8", "8x8", "8x4"):
+        a, b = _model(enc_stride=stride).eval(), _model(enc_stride=stride, cnn_blur=True).eval()
+        for hw in ((32, 64), (35, 70), (64, 96)):
+            x = torch.rand(1, 1, *hw)
+            with torch.no_grad():
+                assert a.encode(x).shape == b.encode(x).shape
+
+
+def test_training_with_skips_is_reproducible(tiny_config, tmp_path):
+    cfg = copy.deepcopy(tiny_config)
+    cfg["model"].update(SKIPS)
+    cfg["train"].update(optimizer="muon")
+    train(copy.deepcopy(cfg), 3, tmp_path / "a", resume=False)
+    train(copy.deepcopy(cfg), 3, tmp_path / "b", resume=False)
+    a = torch.load(tmp_path / "a" / "checkpoints" / "last.pt", map_location="cpu", weights_only=False)["model"]
+    b = torch.load(tmp_path / "b" / "checkpoints" / "last.pt", map_location="cpu", weights_only=False)["model"]
+    assert all(torch.equal(a[k], b[k]) for k in a)
+    assert float(a["dense_gain"].abs().sum()) > 0  # the skips learned
