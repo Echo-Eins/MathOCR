@@ -104,3 +104,7 @@ win_b1_tri2_hv_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts70 <E1b overrides> model.en
 win_b1_tri2_hvd_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts70 <E1b overrides> model.encoder=triscan model.triscan_streams=hvd model.triscan_exchange=false  (--epochs 5; stage 2 item 3, v2 full reach, aec24d9)
 win_b1_tri2_hvd_x_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts70 <E1b overrides> model.encoder=triscan model.triscan_streams=hvd model.triscan_exchange=true  (--epochs 5; stage 2 item 3, v2 full reach, aec24d9)
 win_b1_cells_det_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts70 <E1b overrides> model.head=cells_det  (--epochs 5; stage 2 item 1, plain encoder)
+win_b2_dec3_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts70 <B2 = E1b overrides + model.encoder=triscan model.triscan_streams=hv model.triscan_exchange=false> model.dec_layers=3  (--epochs 5; stage 3)
+win_b2_lr12_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts70 <B2> train.lr=1.2e-3  (--epochs 5; stage 3)
+win_b2_gate_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts70 <B2> model.attn_gate=head  (--epochs 5; stage 3, e85624c)
+win_b2_fonts30_s1|1|PROBE_ROOT=D:\MathOCR\probe_fonts_many (train: the same 70 % CM rows, 30 % over 30 fonts, scripts/fonts/build_font_probe.py --shares D:/MathOCR/fonts20k/shares_many.txt) <B2>  (--epochs 5; stage 3)
