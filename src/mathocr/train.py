@@ -341,6 +341,14 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), tcfg["grad_clip"])
+                if not (math.isfinite(float(loss)) and math.isfinite(float(grad_norm))):
+                    # Stop before a non-finite step poisons the weights (a NaN run would otherwise train on for
+                    # thousands of steps); training is deterministic, so the dump replays the failing step exactly.
+                    torch.save({"step": step, "epoch": epoch, "loss": float(loss), "grad_norm": float(grad_norm),
+                                "batch": {k: v.cpu() for k, v in batch.items()}, "model": model.state_dict(),
+                                "optimizer": opt.state_dict()}, run_dir / "nonfinite.pt")
+                    raise FloatingPointError(f"non-finite loss {float(loss)} / grad norm {float(grad_norm)} at step "
+                                             f"{step} (epoch {epoch}); state and batch in {run_dir / 'nonfinite.pt'}")
                 opt.step()
                 if ema is not None:
                     with torch.no_grad():

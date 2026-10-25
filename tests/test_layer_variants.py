@@ -132,3 +132,14 @@ def test_training_with_skips_is_reproducible(tiny_config, tmp_path):
     b = torch.load(tmp_path / "b" / "checkpoints" / "last.pt", map_location="cpu", weights_only=False)["model"]
     assert all(torch.equal(a[k], b[k]) for k in a)
     assert float(a["dense_gain"].abs().sum()) > 0  # the skips learned
+
+
+def test_a_non_finite_step_halts_with_a_dump(tiny_config, tmp_path):
+    import pytest
+
+    cfg = copy.deepcopy(tiny_config)
+    cfg["train"].update(lr=1e30, warmup_steps=1)  # the first update blows every weight up: the next loss is not finite
+    with pytest.raises(FloatingPointError):
+        train(copy.deepcopy(cfg), 3, tmp_path / "a", resume=False)
+    dump = torch.load(tmp_path / "a" / "nonfinite.pt", map_location="cpu", weights_only=False)
+    assert dump["step"] >= 1 and "images" in dump["batch"]
