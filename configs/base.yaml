@@ -95,6 +95,8 @@ train:
   optimizer: adamw        # adamw | muon (optim.py; Muon shares lr/wd via the Moonshot RMS match)
   muon_momentum: 0.95
   muon_scope: all          # all | backbone (CNN only) | transformer (everything but the CNN)
+  muon_polar: false        # Polar Express coefficients for the Newton-Schulz iteration (Amsel et al. 2025)
+  muon_neuron_norm: false  # NorMuon: per-neuron second-moment normalization of the orthogonal update (Li et al. 2025)
   lr: 3.0e-4
   weight_decay: 0.05
   warmup_steps: 2000
