@@ -132,6 +132,20 @@ def layout(crop: Crop, cfg: ImageConfig, jitter: float = 1.0) -> np.ndarray:
     return out
 
 
+def layout_into(crop: Crop, cfg: ImageConfig, shape: tuple[int, int], jitter: float = 1.0) -> np.ndarray:
+    """``layout`` onto a given canvas ``shape``: the same glyph scale, shrunk further if the crop would not fit
+    (a twin render of one label in another font lands on its original's canvas, so both batch together)."""
+
+    h, w = crop.pixels.shape
+    new_h, new_w = _scaled_size(h, w, crop.glyph_px, cfg, jitter)
+    fit = min(1.0, (shape[0] - 2 * cfg.margin) / new_h, (shape[1] - 2 * cfg.margin) / new_w)
+    new_h, new_w = max(1, int(new_h * fit)), max(1, int(new_w * fit))
+    resized = Image.fromarray(crop.pixels, mode="L").resize((new_w, new_h), Image.Resampling.BICUBIC)
+    out = np.full(shape, 255, dtype=np.uint8)
+    out[cfg.margin : cfg.margin + new_h, cfg.margin : cfg.margin + new_w] = np.asarray(resized)
+    return out
+
+
 def prepare(image: Image.Image, cfg: ImageConfig) -> np.ndarray:
     """Canonical model input for ``image`` (no augmentation)."""
 

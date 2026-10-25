@@ -22,8 +22,8 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset, Sampler
 
-from mathocr.determinism import epoch_rng, sample_rng
-from mathocr.image import Crop, ImageConfig, layout, output_shape, to_tensor
+from mathocr.determinism import epoch_rng, sample_rng, twin_rng
+from mathocr.image import Crop, ImageConfig, layout, layout_into, output_shape, to_tensor
 from mathocr.tokenizer import Vocab, tokenize
 
 
@@ -65,6 +65,11 @@ class AugmentConfig:
     gamma_log_range: float = 0.7
     p_jpeg: float = 0.0
     jpeg_quality: tuple[int, int] = (30, 90)
+    # Twins (cross-font consistency, train.pair_consistency): with probability pair_share a single-formula sample
+    # also brings the same label from one of pair_variants (row-aligned train copies in other fonts, data dir),
+    # laid out on the original's canvas and augmented on its own stream (determinism.twin_rng).
+    pair_variants: tuple[str, ...] = ()
+    pair_share: float = 0.0
 
 
 class CropStore:
@@ -392,13 +397,18 @@ def rasterize(arr: np.ndarray, rng: np.random.Generator, cfg: AugmentConfig) -> 
 class TrainItems(Dataset):
     """Indexed by ``(sample index, jitter, epoch)`` tuples from ``ShapeBatchSampler``."""
 
-    def __init__(self, store: CropStore, image_cfg: ImageConfig, aug_cfg: AugmentConfig | None, seed: int):
+    def __init__(self, store: CropStore, image_cfg: ImageConfig, aug_cfg: AugmentConfig | None, seed: int,
+                 twins: Sequence[CropStore] = ()):
         self.store, self.image_cfg, self.aug_cfg, self.seed = store, image_cfg, aug_cfg, seed
+        for t in twins:
+            if t.uids != store.uids or t.labels != store.labels:
+                raise ValueError("twin variants must be row-aligned with the training store")
+        self.twins = list(twins)
 
     def __len__(self) -> int:
         return len(self.store)
 
-    def __getitem__(self, key: tuple) -> tuple[torch.Tensor, np.ndarray, int]:
+    def __getitem__(self, key: tuple) -> tuple:
         i, jitter, epoch = key[:3]
         partners = key[3] if len(key) > 3 else ()
         store = _epoch_store(self.store, epoch)
@@ -408,18 +418,29 @@ class TrainItems(Dataset):
             target = stacked_target(store, idx, self.aug_cfg.stack_style)
         else:
             arr, target = layout(store.crop(i), self.image_cfg, jitter), store.target(i)
+        twin = None
+        if self.twins and not partners and self.aug_cfg is not None:
+            rng = twin_rng(self.seed, epoch, i)
+            if rng.random() < self.aug_cfg.pair_share:
+                crop = self.twins[int(rng.integers(0, len(self.twins)))].crop(i)
+                twin = to_tensor(augment(layout_into(crop, self.image_cfg, arr.shape, jitter), rng, self.aug_cfg))
         if self.aug_cfg is not None:
             arr = augment(arr, sample_rng(self.seed, epoch, i), self.aug_cfg)
-        return to_tensor(arr), target, i
+        return (to_tensor(arr), target, i) if twin is None else (to_tensor(arr), target, i, twin)
 
 
-def collate(batch: list[tuple[torch.Tensor, np.ndarray, int]], pad_id: int) -> dict[str, torch.Tensor]:
+def collate(batch: list[tuple], pad_id: int) -> dict[str, torch.Tensor]:
     images = torch.stack([b[0] for b in batch])  # same shape by construction
     longest = max(len(b[1]) for b in batch)
     tokens = torch.full((len(batch), longest), pad_id, dtype=torch.long)
-    for row, (_, ids, _) in enumerate(batch):
-        tokens[row, : len(ids)] = torch.from_numpy(ids)
-    return {"images": images, "tokens": tokens, "index": torch.tensor([b[2] for b in batch])}
+    for row, b in enumerate(batch):
+        tokens[row, : len(b[1])] = torch.from_numpy(b[1])
+    out = {"images": images, "tokens": tokens, "index": torch.tensor([b[2] for b in batch])}
+    rows = [r for r, b in enumerate(batch) if len(b) > 3]
+    if rows:  # twin renders of these rows' labels, on the same canvas
+        out["twins"] = torch.stack([batch[r][3] for r in rows])
+        out["twin_rows"] = torch.tensor(rows)
+    return out
 
 
 class ShapeBatchSampler(Sampler[list[tuple[int, float, int]]]):

@@ -87,6 +87,8 @@ augment:
   gamma_log_range: 0.7
   p_jpeg: 0.0               # JPEG at a quality in jpeg_quality
   jpeg_quality: [30, 90]
+  pair_variants: []         # twins: row-aligned train copies in other fonts (train.pair_consistency)
+  pair_share: 0.0           # share of single-formula samples that bring a twin
 
 train:
   epochs: 15
@@ -108,6 +110,7 @@ train:
   soft_mode: replace         # replace: smoothing mass -> soft targets; alt: + soft_weight x CE on neighbours' alternatives
   mtp: []                  # multi-token prediction without parameters: weights of tokens t+2, t+3, ... on the same logits
   mtp_until: 0.67          # the mtp weights fade linearly to zero by this share of the run
+  pair_consistency: 0.0    # weight of the symmetric JS between an original's and its twin's token distributions
   grad_clip: 1.0
   amp: true                # bf16 autocast for training; evaluation is fp32
   pixel_budget: 1000000    # images per batch = min(max_batch, budget // (H*W))

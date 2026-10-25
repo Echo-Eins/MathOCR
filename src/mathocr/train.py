@@ -94,10 +94,15 @@ def reverse_targets(tokens: torch.Tensor, direction: torch.Tensor, pad_id: int) 
 def _loss(model: Im2Latex, batch: dict, device: torch.device, vocab: Vocab, smoothing: float,
           amp: bool, count_weight: float = 0.0, countable: torch.Tensor | None = None,
           token_dropout: float = 0.0, both_directions: bool = True,
-          soft: tuple | None = None, mtp: Sequence[float] = ()) -> tuple[torch.Tensor, int, torch.Tensor, dict]:
+          soft: tuple | None = None, mtp: Sequence[float] = (),
+          pair_weight: float = 0.0) -> tuple[torch.Tensor, int, torch.Tensor, dict]:
     images = batch["images"].to(device, non_blocking=True)
     tokens = batch["tokens"].to(device, non_blocking=True)
     tokens_in = tokens[:, :-1]
+    if pair_weight > 0 and "twins" in batch:
+        if model.cfg.bidir or soft is not None or token_dropout > 0 or count_weight > 0:
+            raise ValueError("twins are not combined with bidir, soft targets, token dropout or the count loss")
+        return _pair_loss(model, batch, images, tokens, device, vocab, smoothing, amp, pair_weight, mtp)
     if token_dropout > 0 and model.cfg.bidir:
         raise ValueError("token_dropout and bidir are not combined")
     if token_dropout > 0:
@@ -181,6 +186,35 @@ def _loss(model: Im2Latex, batch: dict, device: torch.device, vocab: Vocab, smoo
     return loss, int((target != vocab.pad_id).sum()), logits, parts
 
 
+def _pair_loss(model: Im2Latex, batch: dict, images: torch.Tensor, tokens: torch.Tensor, device: torch.device,
+               vocab: Vocab, smoothing: float, amp: bool, weight: float,
+               mtp: Sequence[float]) -> tuple[torch.Tensor, int, torch.Tensor, dict]:
+    """Cross-font consistency (I1; AugMix's Jensen-Shannon term per token): the twins -- the same labels in other
+    fonts -- run in the same batch; cross-entropy on every row, plus ``weight`` x the symmetric JS divergence
+    between each original's teacher-forced next-token distributions and its twin's (non-pad positions)."""
+
+    rows = batch["twin_rows"].to(device)
+    b = images.shape[0]
+    all_tokens = torch.cat([tokens, tokens[rows]])
+    with torch.autocast("cuda", dtype=torch.bfloat16, enabled=amp and device.type == "cuda"):
+        logits = model(torch.cat([images, batch["twins"].to(device, non_blocking=True)]), all_tokens[:, :-1])
+    target = all_tokens[:, 1:]
+    v = logits.shape[-1]
+    loss = F.cross_entropy(logits.float().reshape(-1, v), target.reshape(-1), ignore_index=vocab.pad_id,
+                           label_smoothing=smoothing)
+    if any(mtp):
+        loss = loss + sum(w * F.cross_entropy(logits[:, :-j].float().reshape(-1, v), target[:, j:].reshape(-1),
+                                              ignore_index=vocab.pad_id, label_smoothing=smoothing)
+                          for j, w in enumerate(mtp, start=1) if w > 0 and target.shape[1] > j)
+    lp, lq = torch.log_softmax(logits[rows].float(), -1), torch.log_softmax(logits[b:].float(), -1)
+    lm = torch.logsumexp(torch.stack([lp, lq]), 0) - math.log(2.0)
+    js = 0.5 * ((lp.exp() * (lp - lm)).sum(-1) + (lq.exp() * (lq - lm)).sum(-1))
+    real = (target[b:] != vocab.pad_id).float()
+    js = (js * real).sum() / real.sum().clamp(min=1)
+    parts = {"pair_js": js.detach(), "twins": torch.tensor(float(len(rows)))}
+    return loss + weight * js, int((target[:b] != vocab.pad_id).sum()), logits[:b], parts
+
+
 @torch.no_grad()
 def validate(model: Im2Latex, store: CropStore, sampler: ShapeBatchSampler, items: TrainItems, vocab: Vocab,
              device: torch.device, tcfg: dict, icfg: ImageConfig) -> dict:
@@ -233,7 +267,9 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
         train_source = FontVariants(train_store, [CropStore(data_dir / f, vocab) for f in aug.font_variants], aug.p_font, seed)
     sampler = ShapeBatchSampler(train_source, icfg, tcfg["pixel_budget"], tcfg["max_batch"], seed, train=True, aug_cfg=aug,
                                 max_tokens=mcfg.max_len)
-    items = TrainItems(train_source, icfg, aug, seed)
+    pair_weight = float(tcfg.get("pair_consistency", 0.0))
+    twins = [CropStore(data_dir / f, vocab) for f in aug.pair_variants] if pair_weight > 0 and aug.pair_share > 0 else []
+    items = TrainItems(train_source, icfg, aug, seed, twins)
     loader = DataLoader(items, batch_sampler=sampler, num_workers=tcfg["workers"],
                         collate_fn=partial(collate, pad_id=vocab.pad_id), pin_memory=device.type == "cuda",
                         worker_init_fn=_worker_init, persistent_workers=False)
@@ -301,7 +337,7 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
                 fade = max(0.0, 1.0 - step / max(1.0, mtp_until * total_steps))
                 loss, n, _, parts = _loss(model, batch, device, vocab, tcfg["label_smoothing"], tcfg["amp"],
                                           count_weight, countable, float(tcfg.get("token_dropout", 0.0)), soft=soft,
-                                          mtp=[w * fade for w in mtp])
+                                          mtp=[w * fade for w in mtp], pair_weight=pair_weight)
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), tcfg["grad_clip"])

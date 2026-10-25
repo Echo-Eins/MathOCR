@@ -63,6 +63,13 @@ def sample_rng(seed: int, epoch: int, index: int) -> np.random.Generator:
     return np.random.default_rng(np.random.SeedSequence([seed, epoch, index]))
 
 
+def twin_rng(seed: int, epoch: int, index: int) -> np.random.Generator:
+    """RNG of one sample's twin render in one epoch (its choice and augmentation): a stream apart from
+    ``sample_rng``, so enabling twins leaves every original sample as it was."""
+
+    return np.random.default_rng(np.random.SeedSequence([seed, epoch, index, 1]))
+
+
 def epoch_rng(seed: int, epoch: int, stream: int) -> np.random.Generator:
     """Epoch-level RNG (batch order, bucketing); ``stream`` separates uses."""
 
