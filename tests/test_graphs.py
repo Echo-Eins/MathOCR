@@ -51,6 +51,27 @@ def test_graphed_decoding_matches_eager(tiny_data, monkeypatch):
 
 
 @cuda
+@pytest.mark.parametrize("variant", [{"attn_gate": "head", "qk_norm": True, "value_residual": True},
+                                     {"attn_gate": "elem", "value_residual": True}])
+def test_graphed_decoding_matches_eager_with_layer_variants(tiny_data, monkeypatch, variant):
+    from mathocr import determinism
+
+    determinism.configure(torch.device("cuda"))
+    vocab = Vocab.load(tiny_data / "vocab.json")
+    store = CropStore(tiny_data / "val.parquet", vocab)
+    icfg, dev = ImageConfig(), torch.device("cuda")
+    model = _model(vocab, 0, **variant)
+    with torch.no_grad():  # gates and value shares start neutral: make them act
+        for name, p in model.named_parameters():
+            if ".out_gate." in name or name.endswith(".v_mix") or name.endswith((".q_norm.weight", ".k_norm.weight")):
+                p.normal_(0, 1.0)
+    monkeypatch.setenv("MATHOCR_CUDA_GRAPHS", "0")
+    eager = decode_store(model, store, icfg, vocab, dev, 200_000, 8)
+    monkeypatch.setenv("MATHOCR_CUDA_GRAPHS", "1")
+    assert decode_store(model, store, icfg, vocab, dev, 200_000, 8) == eager
+
+
+@cuda
 def test_graphed_decoding_stops_on_eos_like_eager(tiny_data):
     """A model that always emits EOS: both paths return it at once (EOS after EOS semantics)."""
 

@@ -54,6 +54,17 @@ class AugmentConfig:
     # them with probability p_font (uniformly), else its original image.
     p_font: float = 0.0
     font_variants: tuple[str, ...] = ()
+    # Rasterization (screen captures, low-DPI renders), after the pixel augmentations above and only when enabled
+    # (no extra random draws otherwise): with p_raster the laid-out image is resampled down by a factor in
+    # raster_scale and back up (each way box / bilinear / bicubic / nearest at random) -- the glyph read at a lower
+    # resolution and then enlarged, as ``layout`` enlarges a small screenshot; with p_gamma the intensities follow
+    # a power exp(U(-r, r)) (stroke weight); with p_jpeg JPEG at a quality in jpeg_quality.
+    p_raster: float = 0.0
+    raster_scale: tuple[float, float] = (0.35, 0.8)
+    p_gamma: float = 0.0
+    gamma_log_range: float = 0.7
+    p_jpeg: float = 0.0
+    jpeg_quality: tuple[int, int] = (30, 90)
 
 
 class CropStore:
@@ -350,7 +361,32 @@ def augment(arr: np.ndarray, rng: np.random.Generator, cfg: AugmentConfig) -> np
         x = ink + x * ((paper - ink) / 255.0)
     if rng.random() < cfg.p_noise:
         x = x + rng.normal(0.0, rng.uniform(*cfg.noise_std), size=x.shape)
-    return np.clip(np.rint(x), 0, 255).astype(np.uint8)
+    out = np.clip(np.rint(x), 0, 255).astype(np.uint8)
+    if cfg.p_raster > 0 or cfg.p_gamma > 0 or cfg.p_jpeg > 0:
+        out = rasterize(out, rng, cfg)
+    return out
+
+
+_RESAMPLE = (Image.Resampling.BOX, Image.Resampling.BILINEAR, Image.Resampling.BICUBIC, Image.Resampling.NEAREST)
+
+
+def rasterize(arr: np.ndarray, rng: np.random.Generator, cfg: AugmentConfig) -> np.ndarray:
+    """Shape-preserving rasterization augmentation of a uint8 image (``AugmentConfig.p_raster`` and after)."""
+
+    im = Image.fromarray(arr)
+    if cfg.p_raster > 0 and rng.random() < cfg.p_raster:
+        f = rng.uniform(*cfg.raster_scale)
+        small = (max(1, round(im.width * f)), max(1, round(im.height * f)))
+        down, up = (_RESAMPLE[int(k)] for k in rng.integers(0, len(_RESAMPLE), size=2))
+        im = im.resize(small, down).resize(arr.shape[::-1], up)
+    if cfg.p_gamma > 0 and rng.random() < cfg.p_gamma:
+        g = float(np.exp(rng.uniform(-cfg.gamma_log_range, cfg.gamma_log_range)))
+        im = im.point([round(255.0 * (i / 255.0) ** g) for i in range(256)])
+    if cfg.p_jpeg > 0 and rng.random() < cfg.p_jpeg:
+        buf = io.BytesIO()
+        im.save(buf, format="JPEG", quality=int(rng.integers(cfg.jpeg_quality[0], cfg.jpeg_quality[1] + 1)))
+        im = Image.open(io.BytesIO(buf.getvalue())).convert("L")
+    return np.asarray(im, dtype=np.uint8)
 
 
 class TrainItems(Dataset):

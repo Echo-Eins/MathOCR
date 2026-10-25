@@ -27,12 +27,22 @@ import torch
 from torch import nn
 
 
-def zeropower_via_newtonschulz5(g: torch.Tensor, steps: int = 5, eps: float = 1e-7) -> torch.Tensor:
-    """Approximate orthogonal polar factor ``U V^T`` of a 2D ``g``, or of every matrix of a 3D
-    batch of same-shape matrices (bf16, Keller Jordan's quintic).  Each iteration is three GEMMs
-    for the whole batch: ``b s + c s^2`` and ``a x + B x`` are fused into ``baddbmm``."""
+# Polar Express (Amsel et al. 2025): a different minimax-optimal odd quintic per iteration, computed with the
+# authors' optimal_composition(l=1e-3, num_iters=10, degree=5, safety_factor_eps=1e-2, cushion=0.02); the input
+# is scaled by 1.01 x its Frobenius norm.  The first five suffice for five steps.
+POLAR_EXPRESS = ((8.237312490495555, -23.157747414558187, 16.6805684114459),
+                 (4.082441999064831, -2.8930477353325843, 0.5252849256975642),
+                 (3.926347992254648, -2.854746803476524, 0.531802242289498),
+                 (3.298218713308519, -2.42454198102671, 0.48632008358844137),
+                 (2.297036943455259, -1.636625581259032, 0.4002628455953629))
 
-    a, b, c = 3.4445, -4.7750, 2.0315
+
+def zeropower_via_newtonschulz5(g: torch.Tensor, steps: int = 5, eps: float = 1e-7, polar: bool = False) -> torch.Tensor:
+    """Approximate orthogonal polar factor ``U V^T`` of a 2D ``g``, or of every matrix of a 3D
+    batch of same-shape matrices (bf16, Keller Jordan's quintic, or the Polar Express sequence).  Each
+    iteration is three GEMMs for the whole batch: ``b s + c s^2`` and ``a x + B x`` are fused into ``baddbmm``."""
+
+    coeffs = [POLAR_EXPRESS[min(i, len(POLAR_EXPRESS) - 1)] for i in range(steps)] if polar else         [(3.4445, -4.7750, 2.0315)] * steps
     x = g.bfloat16()
     single = x.dim() == 2
     if single:
@@ -40,8 +50,8 @@ def zeropower_via_newtonschulz5(g: torch.Tensor, steps: int = 5, eps: float = 1e
     transposed = x.size(-2) > x.size(-1)
     if transposed:
         x = x.mT
-    x = x / (x.norm(dim=(-2, -1), keepdim=True) + eps)
-    for _ in range(steps):
+    x = x / (x.norm(dim=(-2, -1), keepdim=True) * (1.01 if polar else 1.0) + eps)
+    for a, b, c in coeffs:
         s = x @ x.mT
         x = torch.baddbmm(x, torch.baddbmm(s, s, s, beta=b, alpha=c), x, beta=a)
     if transposed:
@@ -54,12 +64,18 @@ class Muon(torch.optim.Optimizer):
 
     def __init__(self, param_groups: Iterable[dict[str, Any]], *, lr: float, weight_decay: float = 0.0,
                  momentum: float = 0.95, nesterov: bool = True, ns_steps: int = 5,
-                 betas: tuple[float, float] = (0.9, 0.98), eps: float = 1e-8):
+                 betas: tuple[float, float] = (0.9, 0.98), eps: float = 1e-8, polar: bool = False,
+                 neuron_norm: bool = False, beta2: float = 0.95):
+        """``polar``: Polar Express coefficients instead of the fixed quintic; ``neuron_norm``: NorMuon (Li et
+        al. 2025) -- the orthogonal update divided per output neuron by the root of an EMA (``beta2``) of its
+        mean square, then rescaled to RMS 0.2 (the same as the plain Muon update)."""
+
         groups = list(param_groups)
         if any("use_muon" not in g for g in groups):
             raise ValueError("every Muon param group must set 'use_muon'")
         super().__init__(groups, dict(lr=lr, weight_decay=weight_decay, momentum=momentum, nesterov=nesterov,
-                                      ns_steps=ns_steps, betas=betas, eps=eps))
+                                      ns_steps=ns_steps, betas=betas, eps=eps, polar=polar, neuron_norm=neuron_norm,
+                                      beta2=beta2))
 
     @torch.no_grad()
     def step(self, closure=None):  # type: ignore[override]
@@ -91,11 +107,23 @@ class Muon(torch.optim.Optimizer):
         for (_, long_side), idx in by_shape.items():
             tall = [updates[i].size(0) > updates[i].size(1) for i in idx]
             ortho = zeropower_via_newtonschulz5(
-                torch.stack([updates[i].mT if t else updates[i] for i, t in zip(idx, tall)]), group["ns_steps"])
-            torch._foreach_add_([params[i] for i in idx],
-                                [(o.mT if t else o).reshape(params[i].shape).to(params[i].dtype)
-                                 for i, t, o in zip(idx, tall, ortho.unbind(0))],
-                                alpha=-lr * 0.2 * math.sqrt(long_side))
+                torch.stack([updates[i].mT if t else updates[i] for i, t in zip(idx, tall)]), group["ns_steps"],
+                polar=group["polar"])
+            rows = [(o.mT if t else o) for t, o in zip(tall, ortho.unbind(0))]  # (out, in): a row per output neuron
+            if not group["neuron_norm"]:
+                torch._foreach_add_([params[i] for i in idx],
+                                    [r.reshape(params[i].shape).to(params[i].dtype) for i, r in zip(idx, rows)],
+                                    alpha=-lr * 0.2 * math.sqrt(long_side))
+                continue
+            for i, r in zip(idx, rows):
+                state, r = self.state[params[i]], r.float()
+                if "neuron_v" not in state:
+                    state["neuron_v"] = torch.zeros(r.shape[0], 1, device=r.device)
+                v = state["neuron_v"]
+                v.mul_(group["beta2"]).add_(r.square().mean(dim=1, keepdim=True), alpha=1 - group["beta2"])
+                r = r / (v.sqrt() + group["eps"])
+                scale = 0.2 * math.sqrt(r.numel()) / r.norm().clamp_min(1e-12)
+                params[i].add_((r * scale).reshape(params[i].shape).to(params[i].dtype), alpha=-lr)
 
     def _adamw(self, group: dict[str, Any]) -> None:
         lr, wd, (b1, b2), eps = group["lr"], group["weight_decay"], group["betas"], group["eps"]
@@ -171,5 +199,6 @@ def build_optimizer(model: nn.Module, tcfg: dict) -> torch.optim.Optimizer:
                      {"params": decay, "use_muon": False, "weight_decay": wd},
                      {"params": no_decay, "use_muon": False, "weight_decay": 0.0},
                      *({**g, "use_muon": False} for g in fb_groups)],
-                    lr=lr, momentum=float(tcfg.get("muon_momentum", 0.95)))
+                    lr=lr, momentum=float(tcfg.get("muon_momentum", 0.95)), polar=bool(tcfg.get("muon_polar", False)),
+                    neuron_norm=bool(tcfg.get("muon_neuron_norm", False)))
     raise ValueError(f"unknown optimizer {kind!r}")

@@ -43,9 +43,9 @@ class ModelConfig:
     # "triscan": TriScanBlock replaces the first transformer layer; triscan_streams: any of h (causal and
     # anti-causal scans along the rows), v (convolution over the whole height), d (both diagonals, whole length);
     # triscan_exchange: start-middle-end anchors of v/d modulate the row scans, which run triscan_rounds times,
-    # each fed with the other direction's output
-    triscan_streams: str = "hd"
-    triscan_exchange: bool = True
+    # each fed with the other direction's output.  Default h+v without exchange: the stand's choice (base B2, HANDOFF)
+    triscan_streams: str = "hv"
+    triscan_exchange: bool = False
     triscan_rounds: int = 2
     aas_kernel: bool = False  # fused Triton AAS (deterministic gather-form backward)
     # "sdpa": F.scaled_dot_product_attention everywhere; "triton": fused deterministic attention
@@ -87,6 +87,15 @@ class ModelConfig:
     # "cells_det" -- cells plus per-cell class evidence of the memory pooled by the last cross-attention.
     head: str = "tied"
     head_k: int = 16  # hidden units per vocabulary cell
+    # Transformer-layer variants (encoder and decoder): ``attn_gate`` -- a sigmoid gate from the layer's query-side
+    # input on the attention output before its projection, one per head ("head") or per channel ("elem")
+    # (Qiu et al. 2025; zero-initialized: every head starts at half its output); ``qk_norm`` -- RMSNorm of queries
+    # and keys per head with learned gains (Dehghani et al. 2023, Wortsman et al. 2023); ``value_residual`` --
+    # decoder self-attention values of layer l >= 1 mixed with layer 0's, sigmoid(a) v_l + (1 - sigmoid(a)) v_0,
+    # a = 0 at the start (ResFormer, Zhou et al. 2024).
+    attn_gate: str = "none"
+    qk_norm: bool = False
+    value_residual: bool = False
 
 
 # --------------------------------------------------------------------------- CNN
@@ -697,23 +706,49 @@ ATTN_KERNEL_MIN_KEYS = 256  # shorter key sets (decoder self-attention) are as f
 
 
 class Attention(nn.Module):
-    def __init__(self, d: int, heads: int, dropout: float, kernel: str = "sdpa"):
+    def __init__(self, d: int, heads: int, dropout: float, kernel: str = "sdpa", gate: str = "none",
+                 qk_norm: bool = False):
         super().__init__()
         self.heads, self.dropout, self.kernel = heads, dropout, kernel
         self.q = nn.Linear(d, d)
         self.kv = nn.Linear(d, 2 * d)
         self.out = nn.Linear(d, d)
+        if gate not in ("none", "head", "elem"):
+            raise ValueError(f"unknown attention gate {gate!r}")
+        with torch.random.fork_rng(devices=[]):  # zero-initialized later: the construction draws must not shift others
+            self.out_gate = nn.Linear(d, heads if gate == "head" else d) if gate != "none" else None
+        self.q_norm = nn.RMSNorm(d // heads, eps=1e-6) if qk_norm else None
+        self.k_norm = nn.RMSNorm(d // heads, eps=1e-6) if qk_norm else None
+
+    def init_extra(self) -> None:
+        if self.out_gate is not None:  # sigmoid(0): every head starts at half its output
+            nn.init.zeros_(self.out_gate.weight)
+            nn.init.zeros_(self.out_gate.bias)
 
     def split(self, x: Tensor) -> Tensor:
         b, n, d = x.shape
         return x.view(b, n, self.heads, d // self.heads).transpose(1, 2)
 
+    def query(self, x: Tensor) -> Tensor:
+        q = self.split(self.q(x))
+        return q if self.q_norm is None else self.q_norm(q)
+
     def project_kv(self, x: Tensor) -> tuple[Tensor, Tensor]:
         k, v = self.kv(x).chunk(2, dim=-1)
-        return self.split(k), self.split(v)
+        k = self.split(k)
+        return k if self.k_norm is None else self.k_norm(k), self.split(v)
+
+    def finish(self, y: Tensor, x: Tensor) -> Tensor:
+        """Heads ``y`` (B, H, n, Dh) of the queries from ``x`` (B, n, d) -> the layer's output (B, n, d)."""
+
+        b, h, n, dh = y.shape
+        if self.out_gate is not None:
+            g = torch.sigmoid(self.out_gate(x)).to(y.dtype)  # (B, n, H) or (B, n, d)
+            y = y * (g.transpose(1, 2)[..., None] if g.shape[-1] == h else self.split(g))
+        return self.out(y.transpose(1, 2).reshape(b, n, h * dh))
 
     def attend(self, x: Tensor, k: Tensor, v: Tensor, causal: bool) -> Tensor:
-        q = self.split(self.q(x))
+        q = self.query(x)
         p = self.dropout if self.training else 0.0
         if (self.kernel == "triton" and q.is_cuda and q.dtype in (torch.bfloat16, torch.float16)
                 and k.shape[2] >= ATTN_KERNEL_MIN_KEYS):  # a pure function of the call's shape and dtype
@@ -722,8 +757,7 @@ class Attention(nn.Module):
             y = flash_attention(q, k, v, causal, p)
         else:
             y = F.scaled_dot_product_attention(q, k, v, dropout_p=p, is_causal=causal)
-        b, h, n, dh = y.shape
-        return self.out(y.transpose(1, 2).reshape(b, n, h * dh))
+        return self.finish(y, x)
 
 
 class FeedForward(nn.Sequential):
@@ -732,9 +766,10 @@ class FeedForward(nn.Sequential):
 
 
 class EncoderLayer(nn.Module):
-    def __init__(self, d: int, heads: int, mult: int, dropout: float, attn_kernel: str = "sdpa"):
+    def __init__(self, d: int, heads: int, mult: int, dropout: float, attn_kernel: str = "sdpa", gate: str = "none",
+                 qk_norm: bool = False):
         super().__init__()
-        self.n1, self.attn = nn.LayerNorm(d), Attention(d, heads, dropout, attn_kernel)
+        self.n1, self.attn = nn.LayerNorm(d), Attention(d, heads, dropout, attn_kernel, gate, qk_norm)
         self.n2, self.ff = nn.LayerNorm(d), FeedForward(d, mult, dropout)
         self.drop = nn.Dropout(dropout)
 
@@ -745,17 +780,33 @@ class EncoderLayer(nn.Module):
 
 
 class DecoderLayer(nn.Module):
-    def __init__(self, d: int, heads: int, mult: int, dropout: float, attn_kernel: str = "sdpa"):
+    def __init__(self, d: int, heads: int, mult: int, dropout: float, attn_kernel: str = "sdpa", gate: str = "none",
+                 qk_norm: bool = False, value_residual: bool = False):
         super().__init__()
-        self.n1, self.self_attn = nn.LayerNorm(d), Attention(d, heads, dropout, attn_kernel)
-        self.n2, self.cross_attn = nn.LayerNorm(d), Attention(d, heads, dropout, attn_kernel)
+        self.n1, self.self_attn = nn.LayerNorm(d), Attention(d, heads, dropout, attn_kernel, gate, qk_norm)
+        self.n2, self.cross_attn = nn.LayerNorm(d), Attention(d, heads, dropout, attn_kernel, gate, qk_norm)
         self.n3, self.ff = nn.LayerNorm(d), FeedForward(d, mult, dropout)
         self.drop = nn.Dropout(dropout)
+        self.v_mix = nn.Parameter(torch.zeros(())) if value_residual else None  # sigmoid: own share of the values
+
+    def mix_values(self, v: Tensor, v_first: dict | None) -> Tensor:
+        """Value residual: the first layer that sees ``v_first`` (a dict) leaves its values there; later layers
+        with ``v_mix`` blend them into their own."""
+
+        if v_first is None:
+            return v
+        if "v" not in v_first:
+            v_first["v"] = v
+        elif self.v_mix is not None:
+            lam = torch.sigmoid(self.v_mix).to(v.dtype)
+            v = lam * v + (1 - lam) * v_first["v"]
+        return v
 
     def forward(self, x: Tensor, mem_kv: tuple[Tensor, Tensor], cache: dict | None = None,
-                return_cross: bool = False, cross_bias: Tensor | None = None):
+                return_cross: bool = False, cross_bias: Tensor | None = None, v_first: dict | None = None):
         h = self.n1(x)
         k, v = self.self_attn.project_kv(h)
+        v = self.mix_values(v, v_first)
         if cache is None:
             x = x + self.drop(self.self_attn.attend(h, k, v, causal=True))
         else:
@@ -772,12 +823,12 @@ class DecoderLayer(nn.Module):
         # Same attention, with the weights formed explicitly (plus an optional
         # additive bias): their mean over heads is where this layer reads the image.
         att = self.cross_attn
-        q = att.split(att.q(self.n2(x)))
+        hq = self.n2(x)
+        q = att.query(hq)
         logits = (q.float() @ mem_kv[0].float().transpose(-1, -2)) / math.sqrt(q.shape[-1])
         w = torch.softmax(logits if cross_bias is None else logits + cross_bias, dim=-1)
         y = F.dropout(w, att.dropout, self.training).to(mem_kv[1].dtype) @ mem_kv[1]
-        b, h, n, dh = y.shape
-        x = x + self.drop(att.out(y.transpose(1, 2).reshape(b, n, h * dh)))
+        x = x + self.drop(att.finish(y, hq))
         return x + self.drop(self.ff(self.n3(x))), w.mean(dim=1)
 
 
@@ -1160,13 +1211,13 @@ class Im2Latex(nn.Module):
         self.backbone = ConvBackbone(cfg.cnn_channels, cfg.cnn_blocks, cfg.rings, cfg.inject, cfg.enc_stride)
         self.proj = nn.Linear(self.backbone.out_channels, d)
         self.enc_drop = nn.Dropout(cfg.dropout)
+        attn = (cfg.attn_kernel, cfg.attn_gate, cfg.qk_norm)
         if cfg.encoder == "transformer":
-            blocks = (EncoderLayer(d, cfg.n_heads, cfg.ff_mult, cfg.dropout, cfg.attn_kernel)
-                      for _ in range(cfg.enc_layers))
+            blocks = (EncoderLayer(d, cfg.n_heads, cfg.ff_mult, cfg.dropout, *attn) for _ in range(cfg.enc_layers))
         elif cfg.encoder == "triscan":  # the three-kernel mixer in place of the first transformer layer
             blocks = [TriScanBlock(d, cfg.n_heads, cfg.dropout, cfg.triscan_streams, cfg.triscan_exchange,
                                    cfg.triscan_rounds)] + [
-                EncoderLayer(d, cfg.n_heads, cfg.ff_mult, cfg.dropout, cfg.attn_kernel) for _ in range(cfg.enc_layers - 1)]
+                EncoderLayer(d, cfg.n_heads, cfg.ff_mult, cfg.dropout, *attn) for _ in range(cfg.enc_layers - 1)]
         elif cfg.encoder == "aas":
             blocks = (AASBlock(d, cfg.n_heads, cfg.local_expansion, cfg.aas_kernel) for _ in range(cfg.enc_layers))
         elif cfg.encoder == "aas_sort":
@@ -1178,8 +1229,9 @@ class Im2Latex(nn.Module):
         self.embed = nn.Embedding(cfg.vocab_size, d)
         self.register_buffer("tok_pos", sinusoid_1d(cfg.max_len, d), persistent=False)
         self.dec_drop = nn.Dropout(cfg.dropout)
-        self.decoder = nn.ModuleList(DecoderLayer(d, cfg.n_heads, cfg.ff_mult, cfg.dropout, cfg.attn_kernel)
-                                     for _ in range(cfg.dec_layers))
+        self.decoder = nn.ModuleList(DecoderLayer(d, cfg.n_heads, cfg.ff_mult, cfg.dropout, *attn,
+                                                  value_residual=cfg.value_residual and i > 0)
+                                     for i in range(cfg.dec_layers))
         self.dec_norm = nn.LayerNorm(d)
         # Registered last, so enabling it leaves the initialization of every
         # other parameter unchanged.
@@ -1218,8 +1270,8 @@ class Im2Latex(nn.Module):
             "head.", "head_mix.", "head_read.", "head_det.")  # optional parts, initialized after everything else
 
     def _init_weights(self) -> None:
-        for name, p in self.named_parameters():
-            if p.dim() > 1 and not name.startswith(("backbone", *self.LATE)):
+        for name, p in self.named_parameters():  # attention gates start at zero (init_extra), drawing nothing
+            if p.dim() > 1 and not name.startswith(("backbone", *self.LATE)) and ".out_gate." not in name:
                 nn.init.xavier_uniform_(p)
         nn.init.normal_(self.embed.weight, std=self.cfg.d_model**-0.5)
         # Residual branches are NOT zero-initialized: at init the signal would
@@ -1329,6 +1381,7 @@ class Im2Latex(nn.Module):
         first_deform = len(self.decoder) - self.cfg.deform_layers
         g, prev, pos = None, None, None
         states = []
+        v_first = {} if self.cfg.value_residual else None  # layer 0's self-attention values (value residual)
         if self.head_read is not None:
             self._readout = {"kv": mem_kv[-1]}
         for i, (layer, kv) in enumerate(zip(self.decoder, mem_kv)):
@@ -1345,14 +1398,14 @@ class Im2Latex(nn.Module):
                             cov = cache.get("cov", torch.zeros_like(prev))
                             cache["cov"] = cov + prev
                     bias = fb[i - 1](prev, pos, cov)
-                x, w = layer(x, kv, cache, return_cross=True, cross_bias=bias)
+                x, w = layer(x, kv, cache, return_cross=True, cross_bias=bias, v_first=v_first)
                 prev = w.detach()
             elif i == fl - 1 or i >= first_deform or (self.head_det is not None and i == len(self.decoder) - 1):
-                x, w = layer(x, kv, cache, return_cross=True)
+                x, w = layer(x, kv, cache, return_cross=True, v_first=v_first)
                 if self.head_det is not None and i == len(self.decoder) - 1:
                     self._readout = {"w": w}
             else:
-                x = layer(x, kv, cache)
+                x = layer(x, kv, cache, v_first=v_first)
             if i >= first_deform:  # read fine features around this layer's own focus
                 pos = cell_centres(images, self.cfg.coarse, self.cfg.enc_stride) if pos is None else pos
                 focus = w.detach() @ pos

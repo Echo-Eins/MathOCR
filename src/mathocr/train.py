@@ -24,6 +24,7 @@ import os
 import subprocess
 import sys
 import time
+from collections.abc import Sequence
 from dataclasses import asdict
 from functools import partial
 from pathlib import Path
@@ -93,7 +94,7 @@ def reverse_targets(tokens: torch.Tensor, direction: torch.Tensor, pad_id: int) 
 def _loss(model: Im2Latex, batch: dict, device: torch.device, vocab: Vocab, smoothing: float,
           amp: bool, count_weight: float = 0.0, countable: torch.Tensor | None = None,
           token_dropout: float = 0.0, both_directions: bool = True,
-          soft: tuple | None = None) -> tuple[torch.Tensor, int, torch.Tensor, dict]:
+          soft: tuple | None = None, mtp: Sequence[float] = ()) -> tuple[torch.Tensor, int, torch.Tensor, dict]:
     images = batch["images"].to(device, non_blocking=True)
     tokens = batch["tokens"].to(device, non_blocking=True)
     tokens_in = tokens[:, :-1]
@@ -169,6 +170,14 @@ def _loss(model: Im2Latex, batch: dict, device: torch.device, vocab: Vocab, smoo
         count_loss = (nll / (target != vocab.pad_id).sum(dim=1).clamp(min=1)).mean()
         parts["count_loss"] = count_loss.detach()
         loss = loss + count_weight * count_loss
+    if any(mtp):
+        # Multi-token prediction without new parameters (modded-nanogpt): the logits at t also learn the
+        # tokens t + 1 + j with weights ``mtp[j - 1]`` (the trainer decays them to zero).
+        extra = sum(w * F.cross_entropy(logits[:, :-j].float().reshape(-1, logits.shape[-1]), target[:, j:].reshape(-1),
+                                        ignore_index=vocab.pad_id, label_smoothing=smoothing)
+                    for j, w in enumerate(mtp, start=1) if w > 0 and target.shape[1] > j)
+        parts["mtp_ce"] = torch.as_tensor(extra).detach()
+        loss = loss + extra
     return loss, int((target != vocab.pad_id).sum()), logits, parts
 
 
@@ -244,6 +253,8 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
             raise ValueError("soft targets do not match the training split")
         soft = ((z["ids"], z["w"], z["offsets"]), float(tcfg.get("soft_weight", 0.1)), tcfg.get("soft_mode", "replace"))
     countable = countable_mask(vocab).to(device) if count_weight > 0 else None
+    # train.mtp: weights of the extra future tokens (t+2, t+3, ...), faded linearly to zero by mtp_until x the run
+    mtp, mtp_until = [float(w) for w in tcfg.get("mtp") or []], float(tcfg.get("mtp_until", 0.67))
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, partial(_lr_lambda, warmup=tcfg["warmup_steps"], total=total_steps, min_ratio=tcfg["min_lr_ratio"]))
 
@@ -287,8 +298,10 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
             for i, batch in enumerate(loader):
                 if i >= steps_per_epoch:
                     break
+                fade = max(0.0, 1.0 - step / max(1.0, mtp_until * total_steps))
                 loss, n, _, parts = _loss(model, batch, device, vocab, tcfg["label_smoothing"], tcfg["amp"],
-                                          count_weight, countable, float(tcfg.get("token_dropout", 0.0)), soft=soft)
+                                          count_weight, countable, float(tcfg.get("token_dropout", 0.0)), soft=soft,
+                                          mtp=[w * fade for w in mtp])
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), tcfg["grad_clip"])

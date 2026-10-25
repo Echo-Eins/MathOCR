@@ -34,8 +34,8 @@ model:
   dropout: 0.1
   max_len: 256
   encoder: transformer     # transformer | aas | aas_sort (linear-cost global mixers) | triscan (TriScanBlock first), model.py
-  triscan_streams: hd      # triscan: h (row scans both ways), v (whole-height conv), d (both diagonals)
-  triscan_exchange: true   # triscan: v/d start-middle-end anchors modulate the row scans; rounds of exchange
+  triscan_streams: hv      # triscan: h (row scans both ways), v (whole-height conv), d (both diagonals); hv = base B2
+  triscan_exchange: false  # triscan: v/d start-middle-end anchors modulate the row scans; rounds of exchange
   triscan_rounds: 2
   local_expansion: 1.5     # AAS local residual width (12 d^2 per block, same as a Transformer layer)
   sort_window: 32
@@ -60,6 +60,9 @@ model:
   fovea_channels: 64
   head: tied               # tied | cells (an MLP per vocabulary cell + all-to-all cell links) | cells_ml | cells_vis
   head_k: 16               # hidden units per vocabulary cell
+  attn_gate: none          # none | head | elem: sigmoid gate on every attention output (zero-init: half output)
+  qk_norm: false           # RMSNorm of queries and keys per head (learned gains)
+  value_residual: false    # decoder self-attention values of layers >= 1 mixed with layer 0's (learned share)
 
 augment:
   scale_log_range: 0.29    # glyph-size jitter exp(U(-r, r)) = 0.75x .. 1.34x
@@ -75,6 +78,12 @@ augment:
   stack_style: l            # l: left-aligned lines, array{l} | rl: aligned at the relation, array{r l} | rows: partners are whole array{r l} blocks, rows merged
   p_font: 0.0               # per sample and epoch: probability of one of font_variants instead of the original image
   font_variants: []         # row-aligned train copies in other fonts (data dir), scripts/fonts/build_font_variants.py
+  p_raster: 0.0             # rasterization: resample down by raster_scale and back up (screen captures, low DPI)
+  raster_scale: [0.35, 0.8]
+  p_gamma: 0.0              # intensity power exp(U(-r, r)) (stroke weight)
+  gamma_log_range: 0.7
+  p_jpeg: 0.0               # JPEG at a quality in jpeg_quality
+  jpeg_quality: [30, 90]
 
 train:
   epochs: 15
@@ -94,6 +103,8 @@ train:
   soft_targets: null       # .npz from scripts/soft_targets.py: smoothing mass goes to these per-position targets
   soft_weight: 0.1
   soft_mode: replace         # replace: smoothing mass -> soft targets; alt: + soft_weight x CE on neighbours' alternatives
+  mtp: []                  # multi-token prediction without parameters: weights of tokens t+2, t+3, ... on the same logits
+  mtp_until: 0.67          # the mtp weights fade linearly to zero by this share of the run
   grad_clip: 1.0
   amp: true                # bf16 autocast for training; evaluation is fp32
   pixel_budget: 1000000    # images per batch = min(max_batch, budget // (H*W))

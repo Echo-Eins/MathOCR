@@ -1,7 +1,8 @@
 """Probe stand with font diversity (todo section 12, F1).
 
 The standard stand subsets, except that in train a share of the rows (chosen by sha256(uid)) carry the same label
-rendered in another math font (scripts/fonts/render.py: Times = txfonts, sans = sansmath; 300 dpi).  Labels,
+rendered in another math font (scripts/fonts/render.py: e.g. Times = txfonts, sans = sansmath; 300 dpi; the many-font
+stand of 2026-10-25 spreads 30 % over 30 fonts, D:/MathOCR/fonts20k/shares_many.txt).  Labels,
 uids and splits are unchanged; val and OOD files are copied byte for byte, so probe metrics stay comparable.
 Palatino is not used here: it is the held-out font of the fontswap evaluation.  A render that failed to compile
 keeps the original image.
@@ -72,8 +73,8 @@ def main() -> None:
     manifest = json.loads((args.src / "manifest.json").read_text(encoding="utf-8"))
     manifest["fonts"] = {"rule": "sha256('fonts:' + uid) bucket per train row; other splits unchanged",
                          "shares": dict(shares), "train_rows": dict(used),
-                         "renderer": "scripts/fonts/render.py (pdflatex: txfonts / sansmath, 300 dpi, Ghostscript)",
-                         "held_out": "palatino"}
+                         "renderer": "scripts/fonts/render.py (FONTS there: engine and package per font; 300 dpi, Ghostscript)",
+                         "held_out": "palatino (pxfonts) and otf_pagella (TeX Gyre Pagella Math)"}
     (args.out / "manifest.json").write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
     print(json.dumps(manifest["fonts"]["train_rows"]))
 

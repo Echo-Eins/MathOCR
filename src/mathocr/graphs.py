@@ -80,21 +80,23 @@ class GraphedGreedy:
     def _attend(attn, h: Tensor, k_t: Tensor, v: Tensor, bias: Tensor | None) -> Tensor:
         """One query per row against transposed keys ``k_t`` (B, H, Dh, N) and values ``v`` (B, H, N, Dh)."""
 
-        q = attn.split(attn.q(h))  # (B, H, 1, Dh)
+        q = attn.query(h)  # (B, H, 1, Dh)
         scores = torch.matmul(q, k_t) * q.shape[-1] ** -0.5
         if bias is not None:
             scores = scores + bias
         y = torch.matmul(torch.softmax(scores, dim=-1), v)
-        return attn.out(y.transpose(1, 2).reshape(h.shape[0], 1, -1))
+        return attn.finish(y, h)
 
     def _step(self) -> None:
         model, b = self.model, self.buf
         t, mem = b["t"], b["mem"]
         x = model.embed(b["token"]) * math.sqrt(model.cfg.d_model) + model.tok_pos.index_select(0, t).unsqueeze(0)
         mask = torch.where(b["arange"] <= t, 0.0, float("-inf")).view(1, 1, 1, -1)
+        v_first = {} if model.cfg.value_residual else None
         for i, layer in enumerate(model.decoder):
             h = layer.n1(x)
             k, v = layer.self_attn.project_kv(h)
+            v = layer.mix_values(v, v_first)
             kc, vc = b["kcache"][i], b["vcache"][i]  # (B, H, Dh, L) and (B, H, L, Dh)
             kc.index_copy_(3, t, k.transpose(-1, -2))
             vc.index_copy_(2, t, v)

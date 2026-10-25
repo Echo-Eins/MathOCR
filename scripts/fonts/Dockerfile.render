@@ -1,0 +1,12 @@
+# Render image for font diversity (tasks/todo.md F4): the CDM image plus the TeX math font families that pdflatex
+# can typeset (texlive-fonts-extra: newtx/newpx, fourier, kpfonts, mathdesign, eulervm, cmbright, arev, concmath,
+# stix2, libertinust1math, notomath, ...) and LuaLaTeX with OpenType math fonts (unicode-math).  The CDM image itself
+# stays as it is (the metric must not change).
+#
+#     docker build -t mathocr-render -f scripts/fonts/Dockerfile.render scripts/fonts
+FROM mathocr-cdm:latest
+USER root
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        texlive-fonts-extra texlive-luatex texlive-science texlive-plain-generic fonts-texgyre fonts-texgyre-math fonts-stix fonts-lmodern \
+ && rm -rf /var/lib/apt/lists/*
