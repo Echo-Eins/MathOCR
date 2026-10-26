@@ -66,6 +66,9 @@ model:
   cnn_blur: false          # anti-aliased CNN downsampling: stride-1 convolution, binomial low-pass, subsample (BlurPool)
   dense_memory: false      # every decoder layer reads its own mix of all encoder levels (zero-init gains: plain memory)
   fine_memory: false       # the CNN's stride-4 map joins every cross-attention as extra keys, past the encoder
+  encoder_plan: ""         # encoder "plan": blocks in order, e.g. "h,v,c,T,T" (h/v/d/w TriScan streams, +P pooling exchange, c local, A column attention, T transformer)
+  triscan_wide: 31         # cells of the w stream (row convolution)
+  mtp_heads: 0             # separate MTP heads (one per train.mtp weight); 0 = the main logits learn the future tokens
 
 augment:
   scale_log_range: 0.29    # glyph-size jitter exp(U(-r, r)) = 0.75x .. 1.34x
@@ -89,6 +92,7 @@ augment:
   jpeg_quality: [30, 90]
   pair_variants: []         # twins: row-aligned train copies in other fonts (train.pair_consistency)
   pair_share: 0.0           # share of single-formula samples that bring a twin
+  p_rotate: 0.0             # share of single-formula samples turned 90 degrees clockwise (label unchanged)
 
 train:
   epochs: 15
@@ -112,6 +116,9 @@ train:
   soft_mode: replace         # replace: smoothing mass -> soft targets; alt: + soft_weight x CE on neighbours' alternatives
   mtp: []                  # multi-token prediction without parameters: weights of tokens t+2, t+3, ... on the same logits
   mtp_until: 0.67          # the mtp weights fade linearly to zero by this share of the run
+  schedule: cosine         # cosine | wsd (warmup, constant, linear decay over the last decay_frac)
+  decay_frac: 0.3
+  muon_momentum_warmup: 0  # steps of Muon momentum 0.85 -> muon_momentum (0 = off)
   pair_consistency: 0.0    # weight of the symmetric JS between an original's and its twin's token distributions
   grad_clip: 1.0
   amp: true                # bf16 autocast for training; evaluation is fp32

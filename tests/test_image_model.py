@@ -50,7 +50,10 @@ def test_inverted_and_transparent_inputs():
                                      {"attn_gate": "head", "qk_norm": True, "value_residual": True},
                                      {"attn_gate": "elem", "value_residual": True, "ring_bias": True, "coverage": True},
                                      {"dense_memory": True, "fine_memory": True, "cnn_blur": True, "enc_stride": "8x4"},
-                                     {"encoder": "triscan", "dense_memory": True}])
+                                     {"encoder": "triscan", "dense_memory": True},
+                                     {"encoder": "plan", "encoder_plan": "h,v,c,T", "enc_stride": "8x4"},
+                                     {"encoder": "plan", "encoder_plan": "w,v,c,T"},
+                                     {"encoder": "plan", "encoder_plan": "hvP,A,T", "mtp_heads": 2}])
 def test_cached_greedy_equals_full_forward(variant):
     torch.manual_seed(0)
     m = Im2Latex(ModelConfig(vocab_size=50, cnn_channels=(16, 16, 32, 32), cnn_blocks=(1, 1, 1, 1),

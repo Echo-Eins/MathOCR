@@ -143,3 +143,39 @@ def test_a_non_finite_step_halts_with_a_dump(tiny_config, tmp_path):
         train(copy.deepcopy(cfg), 3, tmp_path / "a", resume=False)
     dump = torch.load(tmp_path / "a" / "nonfinite.pt", map_location="cpu", weights_only=False)
     assert dump["step"] >= 1 and "images" in dump["batch"]
+
+
+def test_wsd_schedule_holds_then_decays():
+    from mathocr.train import _lr_lambda
+
+    lam = [_lr_lambda(s, warmup=10, total=100, min_ratio=0.02, schedule="wsd", decay_frac=0.3) for s in range(100)]
+    assert lam[5] < 1 and lam[10] == lam[69] == 1.0 and lam[70] == 1.0 and 0.02 <= lam[99] < lam[85] < 1.0
+
+
+def test_pool_exchange_starts_as_the_plain_block():
+    from mathocr.model import TriScanBlock
+
+    torch.manual_seed(0)
+    plain = TriScanBlock(16, 4, 0.0, "hv", False, 2).eval()
+    pooled = TriScanBlock(16, 4, 0.0, "hv", False, 2, pool_exchange=True).eval()
+    for m in (plain, pooled):
+        for mod in m.modules():
+            if hasattr(mod, "init_extra"):
+                mod.init_extra()
+    pooled.load_state_dict({**pooled.state_dict(), **plain.state_dict()})
+    x, ink = torch.randn(2, 5, 20, 16), torch.rand(2, 5, 20) > 0.5
+    with torch.no_grad():
+        assert torch.allclose(pooled(x, ink), plain(x, ink), atol=1e-6)
+
+
+def test_mtp_heads_carry_the_future_tokens(tiny_config, tmp_path):
+    cfg = copy.deepcopy(tiny_config)
+    cfg["model"].update(encoder="plan", encoder_plan="h,v,c,T", mtp_heads=2)
+    cfg["train"].update(optimizer="muon", mtp=[0.5, 0.25], mtp_until=10.0, schedule="wsd", muon_momentum_warmup=5)
+    train(copy.deepcopy(cfg), 3, tmp_path / "a", resume=False)
+    train(copy.deepcopy(cfg), 3, tmp_path / "b", resume=False)
+    a = torch.load(tmp_path / "a" / "checkpoints" / "last.pt", map_location="cpu", weights_only=False)["model"]
+    b = torch.load(tmp_path / "b" / "checkpoints" / "last.pt", map_location="cpu", weights_only=False)["model"]
+    assert all(torch.equal(a[k], b[k]) for k in a)
+    assert any(k.startswith("mtp_proj.") for k in a)
+    assert "mtp_ce" in (tmp_path / "a" / "log.jsonl").read_text()

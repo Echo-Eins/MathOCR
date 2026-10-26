@@ -70,6 +70,10 @@ class AugmentConfig:
     # laid out on the original's canvas and augmented on its own stream (determinism.twin_rng).
     pair_variants: tuple[str, ...] = ()
     pair_share: float = 0.0
+    # Rotation (the multi-row probe): with p_rotate a single-formula sample is laid out and turned 90 degrees
+    # clockwise (its start on top, the label unchanged), so the encoder's vertical path reads a long sequence;
+    # drawn per (seed, epoch) by the sampler, which batches it at the transposed shape.
+    p_rotate: float = 0.0
 
 
 class CropStore:
@@ -411,6 +415,7 @@ class TrainItems(Dataset):
     def __getitem__(self, key: tuple) -> tuple:
         i, jitter, epoch = key[:3]
         partners = key[3] if len(key) > 3 else ()
+        turned = bool(key[4]) if len(key) > 4 else False
         store = _epoch_store(self.store, epoch)
         if partners:
             idx = (i, *partners)
@@ -418,8 +423,10 @@ class TrainItems(Dataset):
             target = stacked_target(store, idx, self.aug_cfg.stack_style)
         else:
             arr, target = layout(store.crop(i), self.image_cfg, jitter), store.target(i)
+            if turned:  # clockwise: the formula's start on top
+                arr = np.ascontiguousarray(np.rot90(arr, k=-1))
         twin = None
-        if self.twins and not partners and self.aug_cfg is not None:
+        if self.twins and not partners and not turned and self.aug_cfg is not None:
             rng = twin_rng(self.seed, epoch, i)
             if rng.random() < self.aug_cfg.pair_share:
                 crop = self.twins[int(rng.integers(0, len(self.twins)))].crop(i)
@@ -473,6 +480,8 @@ class ShapeBatchSampler(Sampler[list[tuple[int, float, int]]]):
         else:
             jitters = np.ones(n)
         partners = self._partners(n) if self.train and self.aug_cfg is not None and self.aug_cfg.p_stack > 0 else {}
+        rotating = self.train and self.aug_cfg is not None and self.aug_cfg.p_rotate > 0
+        turn = (epoch_rng(self.seed, self.epoch, 4).random(n) < self.aug_cfg.p_rotate) if rotating else None
         store = _epoch_store(self.store, self.epoch)
         groups: dict[tuple[int, int], list[int]] = defaultdict(list)
         for i in self.indices:
@@ -481,6 +490,8 @@ class ShapeBatchSampler(Sampler[list[tuple[int, float, int]]]):
                 shape = output_shape(h, w, self.image_cfg.target_glyph_px, self.image_cfg, float(jitters[i]))
             else:
                 shape = store.shape(i, self.image_cfg, float(jitters[i]))
+                if rotating and turn[i]:
+                    shape = shape[::-1]
             groups[shape].append(i)
         order_rng = epoch_rng(self.seed, self.epoch, 1)
         batches = []
@@ -490,8 +501,12 @@ class ShapeBatchSampler(Sampler[list[tuple[int, float, int]]]):
                 idx = idx[order_rng.permutation(len(idx))]
             size = max(1, min(self.max_batch, self.pixel_budget // (shape[0] * shape[1])))
             for start in range(0, len(idx), size):
-                batches.append([(int(i), float(jitters[i]), self.epoch, *((partners[int(i)],) if int(i) in partners else ()))
-                                for i in idx[start : start + size]])
+                if rotating:  # keys (i, jitter, epoch, partners, turned)
+                    batches.append([(int(i), float(jitters[i]), self.epoch, partners.get(int(i), ()),
+                                     bool(turn[int(i)]) and int(i) not in partners) for i in idx[start : start + size]])
+                else:
+                    batches.append([(int(i), float(jitters[i]), self.epoch, *((partners[int(i)],) if int(i) in partners else ()))
+                                    for i in idx[start : start + size]])
         if self.train:
             batches = [batches[j] for j in order_rng.permutation(len(batches))]
         return batches

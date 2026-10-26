@@ -1,0 +1,56 @@
+{
+ "name": "win_b3_final6_s1",
+ "n": 993,
+ "edit": 0.256,
+ "same_rows": 0.382,
+ "by_rows": {
+  "4 rows": {
+   "n": 490,
+   "edit": 0.1919,
+   "same_rows": 0.571,
+   "fewer_rows": 0.408,
+   "more_rows": 0.02,
+   "row_edit_when_rows_match": 0.1491
+  },
+  "5 rows": {
+   "n": 243,
+   "edit": 0.2464,
+   "same_rows": 0.333,
+   "fewer_rows": 0.626,
+   "more_rows": 0.041,
+   "row_edit_when_rows_match": 0.1561
+  },
+  "6 rows": {
+   "n": 115,
+   "edit": 0.3149,
+   "same_rows": 0.122,
+   "fewer_rows": 0.87,
+   "more_rows": 0.009,
+   "row_edit_when_rows_match": 0.1655
+  },
+  "7 rows": {
+   "n": 50,
+   "edit": 0.3871,
+   "same_rows": 0.04,
+   "fewer_rows": 0.94,
+   "more_rows": 0.02,
+   "row_edit_when_rows_match": 0.2161
+  },
+  "8 rows": {
+   "n": 36,
+   "edit": 0.412,
+   "same_rows": 0.028,
+   "fewer_rows": 0.972,
+   "more_rows": 0.0,
+   "row_edit_when_rows_match": 0.2279
+  },
+  "9+ rows": {
+   "n": 59,
+   "edit": 0.508,
+   "same_rows": 0.017,
+   "fewer_rows": 0.966,
+   "more_rows": 0.017,
+   "row_edit_when_rows_match": 0.384
+  }
+ }
+}

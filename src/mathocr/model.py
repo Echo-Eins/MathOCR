@@ -106,6 +106,15 @@ class ModelConfig:
     cnn_blur: bool = False
     dense_memory: bool = False
     fine_memory: bool = False
+    # ``encoder="plan"``: the encoder blocks in the order of ``encoder_plan`` (comma-separated): a TriScanBlock per
+    # stream set of h / v / d / w (w: a depthwise convolution along the row, ``triscan_wide`` cells; a trailing "P"
+    # adds the pooling exchange -- every row-scan cell also reads the column means of the vertical stream), "c" a
+    # local 3x3 depthwise block, "A" attention along each column, "T" a transformer layer.
+    encoder_plan: str = ""
+    triscan_wide: int = 31
+    # Separate multi-token-prediction heads (train.mtp): head j predicts token t + 1 + j from the final state through
+    # its own LayerNorm + Linear on the tied output embedding; training only (inference reads the main head).
+    mtp_heads: int = 0
 
 
 # --------------------------------------------------------------------------- CNN
@@ -425,11 +434,12 @@ class TriScanBlock(nn.Module):
     with the other direction's previous output at every cell (zero-initialized: starts as the plain block)."""
 
     def __init__(self, d: int, heads: int, dropout: float, streams: str, exchange: bool, rounds: int,
-                 ff_mult: int = 3):
+                 ff_mult: int = 3, pool_exchange: bool = False, wide: int = 31):
         super().__init__()
-        assert streams and set(streams) <= set("hvd"), streams
+        assert streams and set(streams) <= set("hvdw"), streams
         assert not exchange or ("h" in streams and set(streams) & set("vd")), "exchange needs h and v or d"
-        self.streams, self.exchange, self.rounds = streams, exchange, rounds
+        assert not pool_exchange or ("h" in streams and "v" in streams), "the pooling exchange needs h and v"
+        self.streams, self.exchange, self.rounds, self.pool_exchange = streams, exchange, rounds, pool_exchange
         self.n1, self.n2 = nn.LayerNorm(d), nn.LayerNorm(d)
         self.value, self.gate = nn.Linear(d, d), nn.Linear(d, d)
         if "h" in streams:
@@ -438,7 +448,11 @@ class TriScanBlock(nn.Module):
             self.vertical = ColumnConv(d)
         if "d" in streams:
             self.diagonal = DiagonalConv(d)
-        n_out = 2 * ("h" in streams) + ("v" in streams) + ("d" in streams)
+        if "w" in streams:  # a depthwise convolution along the row (both sides, ``wide`` cells)
+            self.dw_wide = nn.Parameter(torch.zeros(d, 1, wide))
+        if pool_exchange:  # vertical -> horizontal: column means of the vertical stream join the row scans' input
+            self.col_to_row = nn.Linear(d, d)
+        n_out = 2 * ("h" in streams) + ("v" in streams) + ("d" in streams) + ("w" in streams)
         self.out = nn.Linear(n_out * d, d)
         self.ff = FeedForward(d, ff_mult, dropout)
         self.drop = nn.Dropout(dropout)
@@ -451,6 +465,11 @@ class TriScanBlock(nn.Module):
             for m in (self.anchor[2], self.to_causal, self.to_anti):
                 nn.init.zeros_(m.weight)
                 nn.init.zeros_(m.bias)
+        if "w" in self.streams:
+            nn.init.normal_(self.dw_wide, std=self.dw_wide.shape[-1] ** -0.5)
+        if self.pool_exchange:  # start as the plain block
+            nn.init.zeros_(self.col_to_row.weight)
+            nn.init.zeros_(self.col_to_row.bias)
 
     def forward(self, x: Tensor, ink: Tensor) -> Tensor:
         """x (B, h, w, d), ink (B, h, w) bool -> (B, h, w, d)."""
@@ -461,8 +480,16 @@ class TriScanBlock(nn.Module):
             geo.append(self.vertical(v))
         if "d" in self.streams:
             geo.append(self.diagonal(v))
+        if "w" in self.streams:
+            b, h, w, d = v.shape
+            k = self.dw_wide.shape[-1]
+            y = F.conv1d(v.reshape(b * h, w, d).transpose(1, 2), self.dw_wide.to(v.dtype), padding=k // 2, groups=d)
+            geo.append(y.transpose(1, 2).reshape(b, h, w, d))
         outs = []
         if "h" in self.streams:
+            if self.pool_exchange:  # every row cell also hears its column (the vertical stream's mean over rows)
+                u = u + self.col_to_row(geo[0].mean(dim=1, keepdim=True))
+                v = self.value(u)
             if self.exchange:
                 film = self.anchor(thirds(sum(geo), ink))[:, None, None]
                 gc, bc, ga, ba = film.chunk(4, dim=-1)
@@ -476,6 +503,45 @@ class TriScanBlock(nn.Module):
             outs += [oc, oa]
         g = F.gelu(self.gate(u))
         x = x + self.drop(self.out(torch.cat([o * g for o in outs + geo], dim=-1)))
+        return x + self.drop(self.ff(self.n2(x)))
+
+
+class LocalBlock(nn.Module):
+    """A small exact kernel on the memory map: depthwise 3x3 convolution, then a pointwise feed-forward
+    (ConvNeXt-style), residual; (B, h, w, d) -> (B, h, w, d)."""
+
+    def __init__(self, d: int, dropout: float, ff_mult: int = 3):
+        super().__init__()
+        self.n1, self.n2 = nn.LayerNorm(d), nn.LayerNorm(d)
+        self.dw_local = nn.Parameter(torch.zeros(d, 1, 3, 3))
+        self.ff = FeedForward(d, ff_mult, dropout)
+        self.drop = nn.Dropout(dropout)
+
+    def init_extra(self) -> None:
+        nn.init.normal_(self.dw_local, std=1 / 3)
+
+    def forward(self, x: Tensor, ink: Tensor) -> Tensor:
+        y = F.conv2d(self.n1(x).permute(0, 3, 1, 2), self.dw_local.to(x.dtype), padding=1, groups=x.shape[-1])
+        x = x + self.drop(y.permute(0, 2, 3, 1))
+        return x + self.drop(self.ff(self.n2(x)))
+
+
+class AxialBlock(nn.Module):
+    """Attention along each column of the memory map (every cell reads its whole column), then a feed-forward;
+    (B, h, w, d) -> (B, h, w, d).  Columns are short (h <= 48 cells on the 384-pixel canvas)."""
+
+    def __init__(self, d: int, heads: int, dropout: float, ff_mult: int = 3):
+        super().__init__()
+        self.n1, self.n2 = nn.LayerNorm(d), nn.LayerNorm(d)
+        self.attn = Attention(d, heads, dropout)
+        self.ff = FeedForward(d, ff_mult, dropout)
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, x: Tensor, ink: Tensor) -> Tensor:
+        b, h, w, d = x.shape
+        u = self.n1(x).transpose(1, 2).reshape(b * w, h, d)
+        y = self.attn.attend(u, *self.attn.project_kv(u), causal=False).reshape(b, w, h, d).transpose(1, 2)
+        x = x + self.drop(y)
         return x + self.drop(self.ff(self.n2(x)))
 
 
@@ -1251,6 +1317,20 @@ class Im2Latex(nn.Module):
             blocks = [TriScanBlock(d, cfg.n_heads, cfg.dropout, cfg.triscan_streams, cfg.triscan_exchange,
                                    cfg.triscan_rounds)] + [
                 EncoderLayer(d, cfg.n_heads, cfg.ff_mult, cfg.dropout, *attn) for _ in range(cfg.enc_layers - 1)]
+        elif cfg.encoder == "plan":
+            blocks = []
+            for tok in (t.strip() for t in cfg.encoder_plan.split(",") if t.strip()):
+                if tok == "T":
+                    blocks.append(EncoderLayer(d, cfg.n_heads, cfg.ff_mult, cfg.dropout, *attn))
+                elif tok == "c":
+                    blocks.append(LocalBlock(d, cfg.dropout))
+                elif tok == "A":
+                    blocks.append(AxialBlock(d, cfg.n_heads, cfg.dropout))
+                else:
+                    blocks.append(TriScanBlock(d, cfg.n_heads, cfg.dropout, tok.rstrip("P"), False, cfg.triscan_rounds,
+                                               pool_exchange=tok.endswith("P"), wide=cfg.triscan_wide))
+            if not blocks:
+                raise ValueError("encoder 'plan' needs a non-empty encoder_plan")
         elif cfg.encoder == "aas":
             blocks = (AASBlock(d, cfg.n_heads, cfg.local_expansion, cfg.aas_kernel) for _ in range(cfg.enc_layers))
         elif cfg.encoder == "aas_sort":
@@ -1304,6 +1384,8 @@ class Im2Latex(nn.Module):
                                if cfg.dense_memory else None)
             self.fine_proj = nn.Linear(cfg.cnn_channels[1], d) if cfg.fine_memory else None  # the stride-4 stage
             self.fine_norm = nn.LayerNorm(d) if cfg.fine_memory else None
+            self.mtp_proj = (nn.ModuleList(nn.Sequential(nn.LayerNorm(d), nn.Linear(d, d)) for _ in range(cfg.mtp_heads))
+                             if cfg.mtp_heads else None)
         self._levels: list[Tensor] | None = None  # dense_memory: the normalized encoder levels of the last encode
         self._fine: Tensor | None = None  # fine_memory: the stride-4 tokens of the last encode
         self._readout: dict = {}  # side inputs of the readout, left by _decode for _logits
@@ -1311,7 +1393,7 @@ class Im2Latex(nn.Module):
         self._init_weights()
 
     LATE = ("count.", "count_proj.", "depth_embed.", "fovea.", "fovea_read.", "feedback.", "deform.", "dir_embed.",
-            "head.", "head_mix.", "head_read.", "head_det.", "dense_norm.", "fine_proj.", "fine_norm.")  # optional parts, initialized after everything else
+            "head.", "head_mix.", "head_read.", "head_det.", "dense_norm.", "fine_proj.", "fine_norm.", "mtp_proj.")  # optional parts, initialized after everything else
 
     def _init_weights(self) -> None:
         for name, p in self.named_parameters():  # attention gates start at zero (init_extra), drawing nothing
@@ -1361,6 +1443,14 @@ class Im2Latex(nn.Module):
                 if levels is not None:
                     levels.append(x)
                 x = layer(x)
+        elif self.cfg.encoder == "plan":  # map-shaped blocks channels last, transformer layers on the sequence
+            ink = F.max_pool2d(images, (images.shape[-2] // h, images.shape[-1] // w))[:, 0] > 0.5
+            for layer in self.encoder:
+                if isinstance(layer, EncoderLayer):
+                    x = layer(x.reshape(b, h * w, -1))
+                else:
+                    x = layer(x.reshape(b, h, w, -1), ink)
+            x = x.reshape(b, h * w, -1)
         elif self.cfg.encoder == "triscan":  # map-shaped first block (channels last), then sequence layers
             ink = F.max_pool2d(images, (images.shape[-2] // h, images.shape[-1] // w))[:, 0] > 0.5
             if levels is not None:
@@ -1514,6 +1604,8 @@ class Im2Latex(nn.Module):
         if not return_aux:
             return logits
         aux = {"log_count": log_count} if log_count is not None else {}
+        if self.mtp_proj is not None:  # token t + 1 + j from head j (training only)
+            aux["mtp_logits"] = [F.linear(self.dec_norm(x + head(x)), self.embed.weight) for head in self.mtp_proj]
         return logits, aux
 
     def _log_count(self, memory: Tensor) -> Tensor:

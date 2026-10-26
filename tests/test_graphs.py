@@ -53,7 +53,8 @@ def test_graphed_decoding_matches_eager(tiny_data, monkeypatch):
 @cuda
 @pytest.mark.parametrize("variant", [{"attn_gate": "head", "qk_norm": True, "value_residual": True},
                                      {"attn_gate": "elem", "value_residual": True},
-                                     {"dense_memory": True, "fine_memory": True, "cnn_blur": True}])
+                                     {"dense_memory": True, "fine_memory": True, "cnn_blur": True},
+                                     {"encoder": "plan", "encoder_plan": "hvP,A,w,c,T", "mtp_heads": 2}])
 def test_graphed_decoding_matches_eager_with_layer_variants(tiny_data, monkeypatch, variant):
     from mathocr import determinism
 

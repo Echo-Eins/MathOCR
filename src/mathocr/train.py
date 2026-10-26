@@ -64,9 +64,15 @@ def _worker_init(_: int) -> None:
     torch.set_num_threads(1)
 
 
-def _lr_lambda(step: int, warmup: int, total: int, min_ratio: float) -> float:
+def _lr_lambda(step: int, warmup: int, total: int, min_ratio: float, schedule: str = "cosine",
+               decay_frac: float = 0.3) -> float:
+    """Linear warmup, then cosine to ``min_ratio`` or (``wsd``) constant and a linear decay over the last
+    ``decay_frac`` of the run (warmup-stable-decay)."""
     if step < warmup:
         return (step + 1) / warmup
+    if schedule == "wsd":
+        start = total - decay_frac * total
+        return 1.0 if step < start else max(min_ratio, 1 - (1 - min_ratio) * (step - start) / max(1.0, total - start))
     progress = min(1.0, (step - warmup) / max(1, total - warmup))
     return min_ratio + (1 - min_ratio) * 0.5 * (1 + math.cos(math.pi * progress))
 
@@ -118,7 +124,8 @@ def _loss(model: Im2Latex, batch: dict, device: torch.device, vocab: Vocab, smoo
         direction = (torch.rand(tokens.shape[0], device=device) < 0.5).long()
         tokens = reverse_targets(tokens, direction, vocab.pad_id)
         tokens_in = tokens[:, :-1]
-    want_aux = count_weight > 0
+    heads = getattr(model, "mtp_proj", None) is not None and any(mtp)
+    want_aux = count_weight > 0 or heads
     with torch.autocast("cuda", dtype=torch.bfloat16, enabled=amp and device.type == "cuda"):
         out = model(images, tokens_in, return_aux=want_aux, direction=direction)
     logits, aux = out if want_aux else (out, {})
@@ -166,7 +173,7 @@ def _loss(model: Im2Latex, batch: dict, device: torch.device, vocab: Vocab, smoo
         soft_ce = -(logp.gather(-1, ids.to(device)) * wts.to(device)).sum(-1).mul(real).sum() / real.sum()
         loss = (1 - eps) * hard + eps * soft_ce
         parts["soft_ce"] = soft_ce.detach()
-    if want_aux:
+    if count_weight > 0:
         # Poisson NLL of the true symbol counts, per image normalized by its
         # token count so the term has the scale of the per-token CE.
         counts = F.one_hot(target, logits.shape[-1]).sum(dim=1).float()[:, countable]
@@ -178,9 +185,11 @@ def _loss(model: Im2Latex, batch: dict, device: torch.device, vocab: Vocab, smoo
     if any(mtp):
         # Multi-token prediction without new parameters (modded-nanogpt): the logits at t also learn the
         # tokens t + 1 + j with weights ``mtp[j - 1]`` (the trainer decays them to zero).
-        extra = sum(w * F.cross_entropy(logits[:, :-j].float().reshape(-1, logits.shape[-1]), target[:, j:].reshape(-1),
+        # separate heads (model.mtp_heads): head j's own logits; otherwise the main logits themselves
+        src = aux["mtp_logits"] if heads else [logits] * len(mtp)
+        extra = sum(w * F.cross_entropy(src[j - 1][:, :-j].float().reshape(-1, logits.shape[-1]), target[:, j:].reshape(-1),
                                         ignore_index=vocab.pad_id, label_smoothing=smoothing)
-                    for j, w in enumerate(mtp, start=1) if w > 0 and target.shape[1] > j)
+                    for j, w in enumerate(mtp, start=1) if w > 0 and target.shape[1] > j and j <= len(src))
         parts["mtp_ce"] = torch.as_tensor(extra).detach()
         loss = loss + extra
     return loss, int((target != vocab.pad_id).sum()), logits, parts
@@ -297,7 +306,10 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
     # train.mtp: weights of the extra future tokens (t+2, t+3, ...), faded linearly to zero by mtp_until x the run
     mtp, mtp_until = [float(w) for w in tcfg.get("mtp") or []], float(tcfg.get("mtp_until", 0.67))
     sched = torch.optim.lr_scheduler.LambdaLR(
-        opt, partial(_lr_lambda, warmup=tcfg["warmup_steps"], total=total_steps, min_ratio=tcfg["min_lr_ratio"]))
+        opt, partial(_lr_lambda, warmup=tcfg["warmup_steps"], total=total_steps, min_ratio=tcfg["min_lr_ratio"],
+                     schedule=tcfg.get("schedule", "cosine"), decay_frac=float(tcfg.get("decay_frac", 0.3))))
+    # Muon momentum warmup (modded-nanogpt): 0.85 -> train.muon_momentum over the first muon_momentum_warmup steps
+    mom_warm, mom_top = int(tcfg.get("muon_momentum_warmup", 0)), float(tcfg.get("muon_momentum", 0.95))
 
     ckpt_dir = run_dir / "checkpoints"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -343,6 +355,10 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
                 loss, n, _, parts = _loss(model, batch, device, vocab, tcfg["label_smoothing"], tcfg["amp"],
                                           count_weight, countable, float(tcfg.get("token_dropout", 0.0)), soft=soft,
                                           mtp=[w * fade for w in mtp], pair_weight=pair_weight)
+                if mom_warm:
+                    for g in opt.param_groups:
+                        if g.get("use_muon"):
+                            g["momentum"] = 0.85 + (mom_top - 0.85) * min(1.0, step / mom_warm)
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), tcfg["grad_clip"])
