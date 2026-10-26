@@ -1,0 +1,159 @@
+{
+ "split": "ood_cpe",
+ "n": 5921,
+ "single_line": {
+  "n": 1430,
+  "edit": 0.12715147977259272,
+  "em": 0.13216783216783218,
+  "pred_is_array": 234
+ },
+ "by_reference_rows": {
+  "1 rows": {
+   "n": 772,
+   "edit": 0.1686,
+   "em": 0.0,
+   "answer_is_array": 0.291,
+   "same_row_count": 0.241,
+   "fewer_rows": 0.0,
+   "more_rows": 0.051,
+   "spec_ok": 0.184,
+   "row_edit_when_rows_match": {
+    "row 1": 0.0985
+   }
+  },
+  "2 rows": {
+   "n": 1855,
+   "edit": 0.0855,
+   "em": 0.0032,
+   "answer_is_array": 0.997,
+   "same_row_count": 0.98,
+   "fewer_rows": 0.016,
+   "more_rows": 0.001,
+   "spec_ok": 0.838,
+   "row_edit_when_rows_match": {
+    "row 1": 0.0893,
+    "row 2": 0.0955
+   }
+  },
+  "3 rows": {
+   "n": 871,
+   "edit": 0.0886,
+   "em": 0.0023,
+   "answer_is_array": 0.999,
+   "same_row_count": 0.916,
+   "fewer_rows": 0.083,
+   "more_rows": 0.0,
+   "spec_ok": 0.853,
+   "row_edit_when_rows_match": {
+    "row 1": 0.0842,
+    "row 2": 0.0846,
+    "row 3": 0.0953
+   }
+  },
+  "4 rows": {
+   "n": 490,
+   "edit": 0.1096,
+   "em": 0.002,
+   "answer_is_array": 1.0,
+   "same_row_count": 0.82,
+   "fewer_rows": 0.178,
+   "more_rows": 0.002,
+   "spec_ok": 0.869,
+   "row_edit_when_rows_match": {
+    "row 1": 0.0899,
+    "row 2": 0.0901,
+    "row 3": 0.0954,
+    "row 4": 0.1031
+   }
+  },
+  "5 rows": {
+   "n": 243,
+   "edit": 0.1277,
+   "em": 0.0,
+   "answer_is_array": 1.0,
+   "same_row_count": 0.737,
+   "fewer_rows": 0.259,
+   "more_rows": 0.004,
+   "spec_ok": 0.856,
+   "row_edit_when_rows_match": {
+    "row 1": 0.0989,
+    "row 2": 0.0982,
+    "row 3": 0.1021,
+    "row 4": 0.0969,
+    "row 5": 0.1168
+   }
+  },
+  "6 rows": {
+   "n": 115,
+   "edit": 0.1844,
+   "em": 0.0,
+   "answer_is_array": 1.0,
+   "same_row_count": 0.504,
+   "fewer_rows": 0.496,
+   "more_rows": 0.0,
+   "spec_ok": 0.896,
+   "row_edit_when_rows_match": {
+    "row 1": 0.0816,
+    "row 2": 0.0879,
+    "row 3": 0.0847,
+    "row 4": 0.0895,
+    "row 5": 0.0895,
+    "row 6+": 0.0926
+   }
+  },
+  "7 rows": {
+   "n": 50,
+   "edit": 0.2612,
+   "em": 0.0,
+   "answer_is_array": 1.0,
+   "same_row_count": 0.22,
+   "fewer_rows": 0.78,
+   "more_rows": 0.0,
+   "spec_ok": 0.82,
+   "row_edit_when_rows_match": {
+    "row 1": 0.0858,
+    "row 2": 0.0691,
+    "row 3": 0.0897,
+    "row 4": 0.1107,
+    "row 5": 0.0738,
+    "row 6+": 0.1336
+   }
+  },
+  "8 rows": {
+   "n": 36,
+   "edit": 0.3035,
+   "em": 0.0,
+   "answer_is_array": 1.0,
+   "same_row_count": 0.111,
+   "fewer_rows": 0.889,
+   "more_rows": 0.0,
+   "spec_ok": 0.778,
+   "row_edit_when_rows_match": {
+    "row 1": 0.2078,
+    "row 2": 0.1283,
+    "row 3": 0.1275,
+    "row 4": 0.0894,
+    "row 5": 0.0809,
+    "row 6+": 0.0595
+   }
+  },
+  "9+ rows": {
+   "n": 59,
+   "edit": 0.397,
+   "em": 0.0,
+   "answer_is_array": 1.0,
+   "same_row_count": 0.017,
+   "fewer_rows": 0.966,
+   "more_rows": 0.017,
+   "spec_ok": 0.678,
+   "row_edit_when_rows_match": {
+    "row 1": 0.1449,
+    "row 2": 0.1739,
+    "row 3": 0.1905,
+    "row 4": 0.1622,
+    "row 5": 0.1622,
+    "row 6+": 0.11
+   }
+  }
+ }
+}

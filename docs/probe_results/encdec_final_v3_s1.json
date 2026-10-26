@@ -1,0 +1,217 @@
+{
+ "name": "final_v3_s1",
+ "receptive_field": {
+  "cnn": {
+   "dy_px_50": 9.5,
+   "dy_px_90": 24.5,
+   "dx_px_50": 6.5,
+   "dx_px_90": 18.5,
+   "mass_beyond_cnn_reach": 0.037396617426723636,
+   "cells": 180
+  },
+  "block1": {
+   "dy_px_50": 10.5,
+   "dy_px_90": 29.5,
+   "dx_px_50": 13.5,
+   "dx_px_90": 100.5,
+   "mass_beyond_cnn_reach": 0.24867570308334347,
+   "cells": 180
+  },
+  "memory": {
+   "dy_px_50": 11.5,
+   "dy_px_90": 31.5,
+   "dx_px_50": 16.5,
+   "dx_px_90": 124.5,
+   "mass_beyond_cnn_reach": 0.2935025474234937,
+   "cells": 180
+  }
+ },
+ "decoder": {
+  "ood_cpe cm": {
+   "n": 278,
+   "tf_acc_visible": 0.9750469363372589,
+   "tf_acc_structural": 0.9644858150772241,
+   "tf_formula_all_right": 0.050359712230215826,
+   "tf_acc_after_first_error": 0.9697783747481531
+  },
+  "ood_cpe palatino": {
+   "n": 278,
+   "tf_acc_visible": 0.9708532423208192,
+   "tf_acc_structural": 0.9628202087286527,
+   "tf_formula_all_right": 0.03237410071942446,
+   "tf_acc_after_first_error": 0.9674311520410874
+  },
+  "ood_cpe sans": {
+   "n": 278,
+   "tf_acc_visible": 0.9740237575095576,
+   "tf_acc_structural": 0.9626763903711609,
+   "tf_formula_all_right": 0.04316546762589928,
+   "tf_acc_after_first_error": 0.9689595979259207
+  },
+  "ood_cpe times": {
+   "n": 278,
+   "tf_acc_visible": 0.9725597269624573,
+   "tf_acc_structural": 0.9640951138519924,
+   "tf_formula_all_right": 0.03237410071942446,
+   "tf_acc_after_first_error": 0.9685790382954218
+  },
+  "ood_sce cm": {
+   "n": 293,
+   "tf_acc_visible": 0.9804001633319722,
+   "tf_acc_structural": 0.9167473378509197,
+   "tf_formula_all_right": 0.5392491467576792,
+   "tf_acc_after_first_error": 0.9511213341000575
+  },
+  "ood_sce palatino": {
+   "n": 295,
+   "tf_acc_visible": 0.9800079968012795,
+   "tf_acc_structural": 0.900853889943074,
+   "tf_formula_all_right": 0.5016949152542373,
+   "tf_acc_after_first_error": 0.9369724254361284
+  },
+  "ood_sce sans": {
+   "n": 293,
+   "tf_acc_visible": 0.9771335238873009,
+   "tf_acc_structural": 0.9036786060019361,
+   "tf_formula_all_right": 0.48464163822525597,
+   "tf_acc_after_first_error": 0.9444444444444444
+  },
+  "ood_sce times": {
+   "n": 295,
+   "tf_acc_visible": 0.9816073570571772,
+   "tf_acc_structural": 0.9093927893738141,
+   "tf_formula_all_right": 0.5288135593220339,
+   "tf_acc_after_first_error": 0.9388264669163545
+  },
+  "ood_spe cm": {
+   "n": 300,
+   "tf_acc_visible": 0.9935774647887324,
+   "tf_acc_structural": 0.954742312689476,
+   "tf_formula_all_right": 0.3933333333333333,
+   "tf_acc_after_first_error": 0.9686965811965812
+  },
+  "ood_spe palatino": {
+   "n": 300,
+   "tf_acc_visible": 0.9906489409643984,
+   "tf_acc_structural": 0.9491066594477531,
+   "tf_formula_all_right": 0.3466666666666667,
+   "tf_acc_after_first_error": 0.964824120603015
+  },
+  "ood_spe sans": {
+   "n": 300,
+   "tf_acc_visible": 0.991887323943662,
+   "tf_acc_structural": 0.9548505846686878,
+   "tf_formula_all_right": 0.38333333333333336,
+   "tf_acc_after_first_error": 0.968481078278901
+  },
+  "ood_spe times": {
+   "n": 300,
+   "tf_acc_visible": 0.9918882379450202,
+   "tf_acc_structural": 0.9524634542501353,
+   "tf_formula_all_right": 0.35,
+   "tf_acc_after_first_error": 0.9677616812895328
+  },
+  "val cm": {
+   "n": 785,
+   "tf_acc_visible": 0.993047553199662,
+   "tf_acc_structural": 0.9751395019571917,
+   "tf_formula_all_right": 0.5121019108280255,
+   "tf_acc_after_first_error": 0.9794655853607819
+  },
+  "val palatino": {
+   "n": 785,
+   "tf_acc_visible": 0.9903210938700261,
+   "tf_acc_structural": 0.9710144927536232,
+   "tf_formula_all_right": 0.4369426751592357,
+   "tf_acc_after_first_error": 0.9765066394279878
+  },
+  "val sans": {
+   "n": 785,
+   "tf_acc_visible": 0.9922022048937886,
+   "tf_acc_structural": 0.9750988965230064,
+   "tf_formula_all_right": 0.4980891719745223,
+   "tf_acc_after_first_error": 0.979033587471667
+  },
+  "val times": {
+   "n": 785,
+   "tf_acc_visible": 0.9922415117529575,
+   "tf_acc_structural": 0.9725970348159254,
+   "tf_formula_all_right": 0.4789808917197452,
+   "tf_acc_after_first_error": 0.9774206468408931
+  }
+ },
+ "glyph_probe": {
+  "cnn": {
+   "val cm": 0.9798,
+   "ood_spe cm": 0.9811,
+   "ood_sce cm": 0.9689,
+   "ood_cpe cm": 0.9603,
+   "val times": 0.9777,
+   "ood_spe times": 0.9801,
+   "ood_sce times": 0.9711,
+   "ood_cpe times": 0.9571,
+   "val palatino": 0.9624,
+   "ood_spe palatino": 0.9705,
+   "ood_sce palatino": 0.9582,
+   "ood_cpe palatino": 0.9407,
+   "val sans": 0.9709,
+   "ood_spe sans": 0.9742,
+   "ood_sce sans": 0.9582,
+   "ood_cpe sans": 0.9507,
+   "cosine same token CM-times": 0.9444,
+   "cosine other tokens CM-times": 0.3756,
+   "cosine same token CM-palatino": 0.9316,
+   "cosine other tokens CM-palatino": 0.3724,
+   "cosine same token CM-sans": 0.9581,
+   "cosine other tokens CM-sans": 0.3764
+  },
+  "block1": {
+   "val cm": 0.9819,
+   "ood_spe cm": 0.9807,
+   "ood_sce cm": 0.9594,
+   "ood_cpe cm": 0.9566,
+   "val times": 0.9782,
+   "ood_spe times": 0.9783,
+   "ood_sce times": 0.9683,
+   "ood_cpe times": 0.9536,
+   "val palatino": 0.9706,
+   "ood_spe palatino": 0.9718,
+   "ood_sce palatino": 0.9546,
+   "ood_cpe palatino": 0.9418,
+   "val sans": 0.9742,
+   "ood_spe sans": 0.9739,
+   "ood_sce sans": 0.9516,
+   "ood_cpe sans": 0.9484,
+   "cosine same token CM-times": 0.9616,
+   "cosine other tokens CM-times": 0.2876,
+   "cosine same token CM-palatino": 0.9524,
+   "cosine other tokens CM-palatino": 0.2861,
+   "cosine same token CM-sans": 0.9722,
+   "cosine other tokens CM-sans": 0.2888
+  },
+  "memory": {
+   "val cm": 0.9822,
+   "ood_spe cm": 0.981,
+   "ood_sce cm": 0.9635,
+   "ood_cpe cm": 0.9583,
+   "val times": 0.9798,
+   "ood_spe times": 0.9795,
+   "ood_sce times": 0.9703,
+   "ood_cpe times": 0.957,
+   "val palatino": 0.9705,
+   "ood_spe palatino": 0.9745,
+   "ood_sce palatino": 0.9522,
+   "ood_cpe palatino": 0.9467,
+   "val sans": 0.9743,
+   "ood_spe sans": 0.9765,
+   "ood_sce sans": 0.959,
+   "ood_cpe sans": 0.953,
+   "cosine same token CM-times": 0.9677,
+   "cosine other tokens CM-times": 0.1778,
+   "cosine same token CM-palatino": 0.9583,
+   "cosine other tokens CM-palatino": 0.1762,
+   "cosine same token CM-sans": 0.9748,
+   "cosine other tokens CM-sans": 0.178
+  }
+ }
+}
