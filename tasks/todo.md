@@ -285,7 +285,13 @@
 
 - [x] `win_b2_dec3_s1` (декодер 3 слоя): val EM 0,400 против 0,416, CPE 0,237 против 0,233, время −2 мин — декодер
       не урезаем (параметры декодера дёшевы по времени: он идёт по ~60–200 токенам, энкодер — по 1–5 тыс. клеток).
-- [ ] `win_b2_lr12_s1` LR 1,2e-3.
+- [x] `win_b2_lr12_s1` LR 1,2e-3 — нейтрально.
+- [x] **Итог этапа 3 (26.10, HANDOFF §1)**: финал `configs/final_v3.yaml` (шрифты «b», энкодер B2, MTP, Polar Express
+      + NorMuon, `max_len` 768, декодер 6); `final_v3_s1` на 202 тыс. пар: свои тесты — паритет (im2latex EM 0,540,
+      oleehyo 0,585), UniMER-Test CDM SPE / CPE / SCE 98,9 / 94,6 / 92,8 (final_v2: 93,7 / 81,4 / 81,8) — выше всех
+      известных моделей без UniMER-1M, у UniMERNet-T (107 M, 1 M пар) 99,1 / 94,9 / 93,8.
+- [ ] Финал: seed'ы 2 и 3 `final_v3` (≈ 5,5 ч каждый), затем `mathocr.aggregate` → README «Результаты».
+- [ ] 300 тыс. пар — только если понадобится (по seed 1 — не нужно); трек UniMER (ниже).
 - **Данные** (главный рычаг OOD):
   - [ ] F4 много шрифтов: образ `mathocr-render` (`scripts/fonts/Dockerfile.render`: texlive-fonts-extra, LuaLaTeX +
         OpenType math), 30 гарнитур в train (pdflatex: txfonts, sansmath, lmodern, mlmodern, newtx, mathptmx, stix2,
