@@ -1,0 +1,40 @@
+{
+ "name": "ft_long",
+ "n": 260,
+ "edit": 0.3139,
+ "same_rows": 0.242,
+ "by_rows": {
+  "6 rows": {
+   "n": 115,
+   "edit": 0.2535,
+   "same_rows": 0.391,
+   "fewer_rows": 0.496,
+   "more_rows": 0.113,
+   "row_edit_when_rows_match": 0.171
+  },
+  "7 rows": {
+   "n": 50,
+   "edit": 0.3063,
+   "same_rows": 0.18,
+   "fewer_rows": 0.72,
+   "more_rows": 0.1,
+   "row_edit_when_rows_match": 0.2009
+  },
+  "8 rows": {
+   "n": 36,
+   "edit": 0.3434,
+   "same_rows": 0.139,
+   "fewer_rows": 0.778,
+   "more_rows": 0.083,
+   "row_edit_when_rows_match": 0.1507
+  },
+  "9+ rows": {
+   "n": 59,
+   "edit": 0.42,
+   "same_rows": 0.068,
+   "fewer_rows": 0.881,
+   "more_rows": 0.051,
+   "row_edit_when_rows_match": 0.2492
+  }
+ }
+}

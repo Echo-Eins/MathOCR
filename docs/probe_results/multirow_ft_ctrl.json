@@ -1,0 +1,40 @@
+{
+ "name": "ft_ctrl",
+ "n": 260,
+ "edit": 0.414,
+ "same_rows": 0.012,
+ "by_rows": {
+  "6 rows": {
+   "n": 115,
+   "edit": 0.3539,
+   "same_rows": 0.026,
+   "fewer_rows": 0.965,
+   "more_rows": 0.009,
+   "row_edit_when_rows_match": 0.1446
+  },
+  "7 rows": {
+   "n": 50,
+   "edit": 0.4013,
+   "same_rows": 0.0,
+   "fewer_rows": 1.0,
+   "more_rows": 0.0,
+   "row_edit_when_rows_match": null
+  },
+  "8 rows": {
+   "n": 36,
+   "edit": 0.4298,
+   "same_rows": 0.0,
+   "fewer_rows": 1.0,
+   "more_rows": 0.0,
+   "row_edit_when_rows_match": null
+  },
+  "9+ rows": {
+   "n": 59,
+   "edit": 0.5324,
+   "same_rows": 0.0,
+   "fewer_rows": 1.0,
+   "more_rows": 0.0,
+   "row_edit_when_rows_match": null
+  }
+ }
+}
