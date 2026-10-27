@@ -64,6 +64,9 @@ OLEEHYO_SHARDS = [
 UNIMER_TEST = PinnedFile("wanderkid/UniMER_Dataset", "2343ddd963290469da36ca83e3a56c66e068add9", "UniMER-Test.zip",
                          "9bf370b8cac868fee84835f40dec26c477430611253e3feb681356a8149a3a90")
 UNIMER_SUBSETS = ("cpe", "sce", "spe", "hwe")
+# The UniMER track's training source (mathocr.data.build_unimer); same pinned revision as UniMER-Test.
+UNIMER_1M = PinnedFile("wanderkid/UniMER_Dataset", "2343ddd963290469da36ca83e3a56c66e068add9", "UniMER-1M.zip",
+                       "c2563aba157f470a9d7d2084aac58fb32607c58ce0992eb4a89d767d23be44dd")
 
 
 def unimer_test_dir(cache_root: Path) -> Path:

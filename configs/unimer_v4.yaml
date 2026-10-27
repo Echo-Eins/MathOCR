@@ -1,0 +1,108 @@
+# The UniMER track (2026-10-27): the final_v4 recipe on 200k pairs of UniMER-1M -- compared with UniMERNet on
+# UniMER-Test, controlled by held-out UniMER-1M pairs and our own tests (im2latex, OleehyO).
+# Data: mathocr.data.build_unimer (D:/MathOCR/data_unimer), then the fonts-b re-render of 30 % of train
+# (scripts/fonts/plan_full_renders.py + render.py + build_font_probe.py -> data_unimer_fb) and the long TeX blocks
+# from its own train rows (scripts/fonts/compose_long.py -> data_unimer_fb_long, the out_dir below).
+
+data:
+  out_dir: D:/MathOCR/data_unimer_fb_long   # the training data version (fonts b + long blocks over build_unimer)
+  build_out_dir: D:/MathOCR/data_unimer      # mathocr.data.build_unimer writes here (run with data.out_dir=<this>)
+  cache_dir: ~/.cache/mathocr
+  unimer_1m_zip: D:/MathOCR/unimer_raw/UniMER-1M.zip   # local copy, checked against sources.UNIMER_1M
+  unimer_train_size: 200000
+  unimer_val_permille: 5     # held-out UniMER-1M: checkpoint selection
+  unimer_test_permille: 10   # held-out UniMER-1M: the in-source test (test_unimer1m)
+  ours_dir: data/processed   # our test_im2latex / test_oleehyo, copied byte for byte
+  max_tokens: 766
+  train_max_tokens: 766      # model.max_len - BOS - EOS
+  min_token_freq: 10
+  min_fit_ratio: 0.6
+  workers: 8
+
+image:
+  target_glyph_px: 18.0
+  max_h: 384
+  max_w: 1536
+  margin: 8
+  multiple: 32
+  min_scale: 0.1
+  max_scale: 4.0
+
+model:
+  cnn_channels: [64, 128, 256, 384]
+  cnn_blocks: [2, 2, 2, 2]
+  d_model: 512
+  n_heads: 8
+  enc_layers: 3
+  dec_layers: 6
+  ff_mult: 4
+  dropout: 0.1
+  max_len: 768             # owner's choice: 5 % of CPE references are longer than 510 tokens
+  encoder: triscan         # TriScanBlock first (base B2), then transformer layers
+  triscan_streams: hv      # row scans both ways + whole-height column convolution
+  triscan_exchange: false
+  triscan_rounds: 2
+  local_expansion: 1.5     # AAS local residual width (12 d^2 per block, same as a Transformer layer)
+  sort_window: 32
+  attn_kernel: triton       # sdpa | triton (fused deterministic attention for long key sets, attn_kernel.py)
+  count_head: false        # symbol-count head on the encoder memory (needs train.count_loss > 0)
+  count_feed: false        # CAN-style: predicted counts fed to every decoder input (needs count_head)
+  ring_bias: false          # decoder layer l: ring x direction bias around layer l-1's attention focus
+  coverage: false           # decoder layer l: penalty on cells layer l-1 read at earlier steps
+  feedback_rings: 6
+  deform_layers: 0          # top decoder layers that also read fine CNN maps at ring points around their focus
+  enc_stride: 8x4           # encoder output stride: 16x8 | 8x8 | 8x4 (more memory cells per glyph)
+  rings: false             # ring branches (dilations 1-8) after CNN stages 2-4
+  inject: false            # raw-image pyramid injected after every CNN stage
+  depth_pos: false         # brace depth as an extra decoder position
+  coarse: 1                # encoder input average-pooled by this factor (fovea still reads full resolution)
+  fovea: false             # foveal ring reader (ring CNN glimpses from decoder layer fovea_layer on)
+  fovea_layer: 3
+  fovea_levels: 5
+  fovea_size: 8
+  fovea_base: 2.0
+  fovea_channels: 64
+
+augment:
+  scale_log_range: 0.29    # glyph-size jitter exp(U(-r, r)) = 0.75x .. 1.34x
+  p_blur: 0.25
+  blur_sigma: [0.3, 0.9]
+  p_stroke: 0.25
+  p_contrast: 0.3
+  p_noise: 0.25
+  noise_std: [2.0, 12.0]
+  p_stack: 0.1              # multi-line composition of 2..stack_max formulas (dataset.py)
+  stack_max: 3
+  stack_gap: 0.6
+  stack_style: rl           # l: left-aligned lines, array{l} | rl: aligned at the relation, array{r l} | rows: partners are whole array{r l} blocks, rows merged
+
+train:
+  epochs: 5
+  optimizer: muon         # adamw | muon (optim.py; Muon shares lr/wd via the Moonshot RMS match)
+  muon_momentum: 0.95
+  muon_scope: all          # all | backbone (CNN only) | transformer (everything but the CNN)
+  muon_polar: true         # Polar Express coefficients (Amsel et al. 2025)
+  muon_neuron_norm: true   # NorMuon (Li et al. 2025)
+  lr: 6.0e-4
+  weight_decay: 0.05
+  warmup_steps: 2000
+  min_lr_ratio: 0.02
+  label_smoothing: 0.1
+  mtp: [0.5, 0.25]         # multi-token prediction without parameters, faded to zero by mtp_until
+  mtp_until: 0.67
+  count_loss: 0.0          # weight of the Poisson symbol-count loss
+  token_dropout: 0.0       # share of teacher-forced input tokens replaced by <unk>
+  init_from: null          # checkpoint whose model weights initialize this run (curriculum)
+  feedback_lr_mult: 1.0    # LR multiplier of the attention-feedback tables (ring bias, coverage)
+  grad_clip: 1.0
+  amp: true                # bf16 autocast for training; evaluation is fp32
+  pixel_budget: 1000000    # images per batch = min(max_batch, budget // (H*W))
+  max_batch: 64
+  workers: 4
+  log_every: 100
+  max_steps_per_epoch: null
+  stop_after_epoch: null   # pause after this epoch (schedule unchanged); continue with --resume
+  val_decode_samples: 2000
+  eval_pixel_budget: 2000000
+  eval_max_batch: 64
+  cuda_memory_fraction: 0.85   # an OOM error instead of paging into system RAM
