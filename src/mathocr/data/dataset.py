@@ -9,7 +9,10 @@ decides the shape), then groups by shape.  All randomness is keyed by
 
 from __future__ import annotations
 
+import atexit
 import io
+import os
+import tempfile
 from collections import defaultdict
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
@@ -76,6 +79,13 @@ class AugmentConfig:
     p_rotate: float = 0.0
 
 
+def _remove_quietly(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
 class CropStore:
     """One split in memory: PNG bytes in a single buffer (fork-friendly)."""
 
@@ -98,6 +108,34 @@ class CropStore:
             lens = np.fromiter((len(i) for i in ids), dtype=np.int64, count=len(ids))
             self.target_offsets = np.concatenate([[0], np.cumsum(lens)])
             self.targets = np.fromiter((t for seq in ids for t in seq), dtype=np.int64, count=int(lens.sum()))
+
+    # Windows DataLoader workers are spawned and get the store pickled through a pipe; a crop buffer past 2 GB
+    # (the 300k-pair handwriting sets, 2.2-2.6 GB) broke that at the start of epoch 1 (OSError 22 / "pickle data was
+    # truncated", hw_v4_s1 2026-10-27).  A large buffer goes once to a temp file instead, and workers memory-map it:
+    # the same bytes, one copy in the page cache.
+    SPILL_BYTES = 256 << 20
+
+    def __getstate__(self) -> dict:
+        state = self.__dict__.copy()
+        if self.buffer.nbytes > self.SPILL_BYTES:
+            state["buffer"], state["_spill"] = None, self._spill_file()
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        spill = state.pop("_spill", None)
+        self.__dict__.update(state)
+        if spill is not None:
+            self.buffer = np.memmap(spill, dtype=np.uint8, mode="r")
+
+    def _spill_file(self) -> str:
+        path = self.__dict__.get("_spill_path")
+        if path is None:
+            fd, path = tempfile.mkstemp(prefix="mathocr_crops_", suffix=".bin")
+            with os.fdopen(fd, "wb") as f:
+                f.write(memoryview(self.buffer))
+            self._spill_path = path
+            atexit.register(_remove_quietly, path)
+        return path
 
     def __len__(self) -> int:
         return len(self.uids)

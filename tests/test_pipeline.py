@@ -1,5 +1,6 @@
 import io
 import json
+import os
 
 import numpy as np
 from PIL import Image
@@ -56,3 +57,16 @@ def test_aggregate_mean_std(tmp_path):
     em = agg["splits"]["test"]["exact_match"]
     assert abs(em["mean"] - 0.6) < 1e-12 and abs(em["std"] - 0.1414213562) < 1e-9
     assert "60.0 ± 14.1" in markdown(agg)
+
+
+def test_store_pickles_a_large_buffer_through_a_memory_mapped_file(tiny_data, monkeypatch):
+    import pickle
+
+    store = CropStore(tiny_data / "val.parquet")
+    monkeypatch.setattr(CropStore, "SPILL_BYTES", 0)  # spill even the tiny buffer
+    state = store.__getstate__()
+    assert state["buffer"] is None and os.path.exists(state["_spill"])
+    copy = pickle.loads(pickle.dumps(store))
+    assert isinstance(copy.buffer, np.memmap)
+    assert all(np.array_equal(copy.crop(i).pixels, store.crop(i).pixels) for i in range(len(store)))
+    assert pickle.loads(pickle.dumps(store)).buffer.filename == copy.buffer.filename  # spilled once
