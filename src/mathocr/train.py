@@ -44,7 +44,7 @@ from mathocr.infer import decode_store
 from mathocr.metrics import text_metrics
 from mathocr.model import Im2Latex, ModelConfig, count_parameters
 from mathocr.optim import build_optimizer
-from mathocr.tokenizer import Vocab
+from mathocr.tokenizer import Vocab, tokenize
 
 
 def _git_commit() -> str | None:
@@ -266,6 +266,11 @@ def train(cfg: dict, seed: int, run_dir: Path, resume: bool) -> dict:
     val_store = CropStore(data_dir / "val.parquet", vocab)
     mcfg = ModelConfig(vocab_size=len(vocab), open_id=vocab.stoi.get("{", -1), close_id=vocab.stoi.get("}", -1),
                        **{k: tuple(v) if isinstance(v, list) else v for k, v in cfg["model"].items()})
+    # Validation teacher-forces every target, so one target longer than the model's positions only fails at the end
+    # of the first epoch (unimer_v4_s1, 2026-10-27, after 77 min): check it before training starts.
+    too_long = [u for u, l in zip(val_store.uids, val_store.labels) if len(tokenize(l)) + 2 > mcfg.max_len]
+    if too_long:
+        raise ValueError(f"{len(too_long)} val targets exceed model.max_len={mcfg.max_len} (with BOS/EOS), e.g. {too_long[:3]}")
     model = Im2Latex(mcfg).to(device)
     ema_decay = float(tcfg.get("ema_decay", 0.0))
     # EMA of the weights (deployed and validated when enabled); updated after every

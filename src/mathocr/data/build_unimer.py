@@ -6,7 +6,8 @@
   smallest sha256 of the formula key after the held-out buckets are taken out; at most ``data.train_max_tokens``
   tokens; no key shared with any evaluation split;
 * ``val`` / ``test_unimer1m`` -- held-out UniMER-1M pairs (hash buckets ``unimer_val_permille`` /
-  ``unimer_test_permille`` of the key): checkpoint selection / the in-source test (pairs never seen in training);
+  ``unimer_test_permille`` of the key) of at most ``data.max_tokens`` tokens: checkpoint selection / the in-source
+  test (pairs never seen in training);
 * ``ood_{cpe,sce,spe,hwe}`` -- UniMER-Test as published (the comparison with UniMERNet);
 * ``test_im2latex``, ``test_oleehyo`` -- copied byte for byte from ``data.ours_dir`` (our own tests: a different
   source and labeling convention for this track).
@@ -58,6 +59,7 @@ def build_unimer(cfg: dict) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     cache = Path(os.path.expanduser(dcfg["cache_dir"]))
     train_max = int(dcfg["train_max_tokens"])
+    max_tokens = int(dcfg["max_tokens"])
     stats: dict[str, Counter] = {}
     splits: dict[str, Rows] = {}
 
@@ -110,11 +112,15 @@ def build_unimer(cfg: dict) -> dict:
             st["in_eval_sets"] += 1
             continue
         bucket = _hash_int(key, "unimer-split") % 1000
-        if bucket < dcfg["unimer_val_permille"]:
-            held["val"].append((i, label))
-        elif bucket < dcfg["unimer_val_permille"] + dcfg["unimer_test_permille"]:
-            held["test"].append((i, label))
-        elif len(tokenize(label)) > train_max:
+        n_tokens = len(tokenize(label))
+        if bucket < dcfg["unimer_val_permille"] + dcfg["unimer_test_permille"]:
+            # held out (as mathocr.data.build: val/test within max_tokens; validation teacher-forces every target)
+            split = "val" if bucket < dcfg["unimer_val_permille"] else "test"
+            if n_tokens > max_tokens:
+                st[f"{split}_too_long"] += 1
+            else:
+                held[split].append((i, label))
+        elif n_tokens > train_max:
             st["train_too_long"] += 1
         else:
             cand.append((i, label))
