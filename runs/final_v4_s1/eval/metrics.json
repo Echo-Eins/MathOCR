@@ -1,0 +1,73 @@
+{
+  "checkpoint": "best.pt",
+  "epoch": 4,
+  "seed": 1,
+  "determinism": {
+    "deterministic_algorithms": true,
+    "fill_uninitialized_memory": false,
+    "cublas_workspace_config": ":4096:8",
+    "cudnn_benchmark": false,
+    "cudnn_deterministic": true,
+    "allow_tf32": false,
+    "torch": "2.14.1+cu130",
+    "cuda": "13.0",
+    "cudnn": 92400,
+    "device": "NVIDIA GeForce RTX 5090 Laptop GPU"
+  },
+  "splits": {
+    "test_im2latex": {
+      "n": 6788,
+      "exact_match": 0.5497937536829699,
+      "edit_distance": 0.04578603780601825,
+      "token_edit_distance": 0.04321206231891265,
+      "bleu": 0.9302981709009421,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    },
+    "test_oleehyo": {
+      "n": 6620,
+      "exact_match": 0.5895770392749244,
+      "edit_distance": 0.03549918179461663,
+      "token_edit_distance": 0.030347379382125114,
+      "bleu": 0.9534825115095098,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    },
+    "ood_cpe": {
+      "n": 5921,
+      "exact_match": 0.03158250295558183,
+      "edit_distance": 0.11274482132729698,
+      "token_edit_distance": 0.09784256195601916,
+      "bleu": 0.8636755223944111,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    },
+    "ood_sce": {
+      "n": 4742,
+      "exact_match": 0.3171657528469,
+      "edit_distance": 0.28029256346321996,
+      "token_edit_distance": 0.23621260241980938,
+      "bleu": 0.6187185170497811,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    },
+    "ood_spe": {
+      "n": 6762,
+      "exact_match": 0.34131913635019223,
+      "edit_distance": 0.0871244686433527,
+      "token_edit_distance": 0.08249525126434681,
+      "bleu": 0.8689584692233718,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    },
+    "ood_hwe": {
+      "n": 6332,
+      "exact_match": 0.005369551484523057,
+      "edit_distance": 0.7294722794267385,
+      "token_edit_distance": 0.6781728706509742,
+      "bleu": 0.07981867504910825,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    }
+  }
+}
