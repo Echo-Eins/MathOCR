@@ -1,0 +1,28 @@
+{
+  "checkpoint": "best.pt",
+  "epoch": 4,
+  "seed": 1,
+  "determinism": {
+    "deterministic_algorithms": true,
+    "fill_uninitialized_memory": false,
+    "cublas_workspace_config": ":4096:8",
+    "cudnn_benchmark": false,
+    "cudnn_deterministic": true,
+    "allow_tf32": false,
+    "torch": "2.14.1+cu130",
+    "cuda": "13.0",
+    "cudnn": 92400,
+    "device": "NVIDIA GeForce RTX 5090 Laptop GPU"
+  },
+  "splits": {
+    "test_mathwriting": {
+      "n": 7191,
+      "exact_match": 0.001807815324711445,
+      "edit_distance": 0.7394299622504362,
+      "token_edit_distance": 0.6753993020033203,
+      "bleu": 0.09867165562292964,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    }
+  }
+}

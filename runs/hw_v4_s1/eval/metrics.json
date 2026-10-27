@@ -1,0 +1,82 @@
+{
+  "checkpoint": "best.pt",
+  "epoch": 1,
+  "seed": 1,
+  "determinism": {
+    "deterministic_algorithms": true,
+    "fill_uninitialized_memory": false,
+    "cublas_workspace_config": ":4096:8",
+    "cudnn_benchmark": false,
+    "cudnn_deterministic": true,
+    "allow_tf32": false,
+    "torch": "2.14.1+cu130",
+    "cuda": "13.0",
+    "cudnn": 92400,
+    "device": "NVIDIA GeForce RTX 5090 Laptop GPU"
+  },
+  "splits": {
+    "test_im2latex": {
+      "n": 6788,
+      "exact_match": 0.5489098408956983,
+      "edit_distance": 0.046448087802150685,
+      "token_edit_distance": 0.04357449534879459,
+      "bleu": 0.9309892545056987,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    },
+    "test_oleehyo": {
+      "n": 6620,
+      "exact_match": 0.5924471299093655,
+      "edit_distance": 0.03591214097684675,
+      "token_edit_distance": 0.030650653921744004,
+      "bleu": 0.9529303639356163,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    },
+    "ood_cpe": {
+      "n": 5921,
+      "exact_match": 0.03360918763722344,
+      "edit_distance": 0.11322863575689929,
+      "token_edit_distance": 0.09912042447442174,
+      "bleu": 0.8593692142997049,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    },
+    "ood_sce": {
+      "n": 4742,
+      "exact_match": 0.3464782792070856,
+      "edit_distance": 0.2515256284443911,
+      "token_edit_distance": 0.20834386832789648,
+      "bleu": 0.6811820215394218,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    },
+    "ood_spe": {
+      "n": 6762,
+      "exact_match": 0.34753031647441585,
+      "edit_distance": 0.08629352747900387,
+      "token_edit_distance": 0.08174206370145183,
+      "bleu": 0.868780010075863,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    },
+    "ood_hwe": {
+      "n": 6332,
+      "exact_match": 0.5194251421351863,
+      "edit_distance": 0.11862403975498494,
+      "token_edit_distance": 0.11196068838712399,
+      "bleu": 0.8454846030231676,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    },
+    "test_mathwriting": {
+      "n": 7191,
+      "exact_match": 0.3315255180086219,
+      "edit_distance": 0.15507215333980964,
+      "token_edit_distance": 0.12996821536431907,
+      "bleu": 0.7849859351144851,
+      "canonical_checked": 200,
+      "canonical_mismatch": 0
+    }
+  }
+}
