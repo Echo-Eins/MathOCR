@@ -198,3 +198,35 @@ def test_metrics_skip_repeat_extra_order():
     m = page_metrics("\n".join([a, c]), REF, ref_y=[0.05, 0.55, 0.95])
     assert m["skipped"] == 1 and m["line_ned"][1] == 1.0 and m["ned_by_height"][5] == 1.0
     assert ned("abc", "abd") == pytest.approx(1 / 3)
+
+
+# ------------------------------------------------------------------ pathfinder
+
+
+def test_pathfinder_labels_and_clean_configurations():
+    from mathocr.pages.pathfinder import PathfinderSpec, _dense, make
+
+    spec = PathfinderSpec()
+    for seed in range(24):
+        label = seed % 2
+        img, meta = make(seed, label, spec)
+        img2, meta2 = make(seed, label, spec)
+        assert img.tobytes() == img2.tobytes() and meta == meta2
+        curves = [np.array(c) for c in meta["curves"]]
+        assert len(curves) == 2 + spec.n_distractors and all(len(c) == spec.n_segments + 1 for c in curves)
+        m = [np.array(p) for p in meta["markers"]]
+        ends = (curves[0][0], curves[0][-1]) if label else (curves[0][0], curves[1][-1])
+        assert all(np.allclose(a, b, atol=0.01) for a, b in zip(m, ends))
+        assert np.linalg.norm(m[0] - m[1]) >= spec.min_marker_dist * spec.size
+        for p, own in zip(m, meta["owners"]):
+            for k, c in enumerate(curves):
+                if k != own:
+                    assert np.sqrt(((_dense(c) - p) ** 2).sum(1)).min() >= spec.clearance - 0.02
+        pts = [(k, e) for k, c in enumerate(curves) for e in (c[0], c[-1])]
+        for i in range(len(pts)):
+            for j in range(i + 1, len(pts)):
+                if pts[i][0] != pts[j][0]:
+                    assert np.linalg.norm(pts[i][1] - pts[j][1]) >= spec.end_clearance - 0.02
+        a = np.asarray(img)
+        for p in m:
+            assert a[int(round(p[1])), int(round(p[0]))] < 64  # a marker is drawn where it is recorded
