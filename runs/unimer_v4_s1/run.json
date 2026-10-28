@@ -1,0 +1,32 @@
+{
+  "seed": 1,
+  "config_sha256": "cfebf218e68c29c21fca791875affe6227cd05cd6713c7226281c3e8b135188d",
+  "git_commit": "dcf19eab4b2555b8db430fab1bc6205490246276",
+  "data_splits": {
+    "ood_cpe": "0b16df24ff2010f348f777b1195ff4e840949b24ffe8e78fa914654a1397cb5a",
+    "ood_hwe": "9db0f05f4ff23e7a7dd6d5a84957f0e9b6f8a945baf9cb4beb31b0e6387b46a6",
+    "ood_sce": "a9b6775c3c3d092367dd9189d4b8bf837b9af6cfe7255fc45aae45c5d36958e4",
+    "ood_spe": "e9dc34524cd2741e4d315a3447468c4bf95d8eb6d8c7bf4f1129934770b63bf4",
+    "test_im2latex": "0ceeaa500ed362a0c9bf3cdca3a7976ff93b42f49174b1514cbc4db92d774c58",
+    "test_oleehyo": "8d9bb65070685a4e52d1e6597dc55f71d1866c12a312ab76b4b75dd4da94c883",
+    "test_unimer1m": "d87b9a7d2661ffd7ae0b29bfa1a35bfa90d34cc37f6b6ba4a5d71153ff4c4fa4",
+    "train": "79347fea75a71201ea1760bffb798fc15bcc4d9e7ab7262e1bda64daa4aea1dc",
+    "val": "b1f180c0665fed1ec80d7ae6d824e1d487f4aad51f39283b53ae442e3a8159fc"
+  },
+  "vocab_sha256": "03a19fb051d8756a5a68e87de61c03ff0dd0081cc42eb2ba7e31ef09794ae285",
+  "parameters": 42840256,
+  "steps_per_epoch": 19168,
+  "determinism": {
+    "deterministic_algorithms": true,
+    "fill_uninitialized_memory": false,
+    "cublas_workspace_config": ":4096:8",
+    "cudnn_benchmark": false,
+    "cudnn_deterministic": true,
+    "allow_tf32": false,
+    "torch": "2.14.1+cu130",
+    "cuda": "13.0",
+    "cudnn": 92400,
+    "device": "NVIDIA GeForce RTX 5090 Laptop GPU"
+  },
+  "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]"
+}

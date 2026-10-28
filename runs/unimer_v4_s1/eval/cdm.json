@@ -1,0 +1,44 @@
+{
+  "ood_cpe": {
+    "cdm": 0.979,
+    "cdm_exp_rate": 0.808,
+    "scored": 1000,
+    "submitted": 1000
+  },
+  "ood_hwe": {
+    "cdm": 0.64,
+    "cdm_exp_rate": 0.181,
+    "scored": 1000,
+    "submitted": 1000
+  },
+  "ood_sce": {
+    "cdm": 0.956,
+    "cdm_exp_rate": 0.816,
+    "scored": 1000,
+    "submitted": 1000
+  },
+  "ood_spe": {
+    "cdm": 0.992,
+    "cdm_exp_rate": 0.925,
+    "scored": 1000,
+    "submitted": 1000
+  },
+  "test_im2latex": {
+    "cdm": 0.994,
+    "cdm_exp_rate": 0.947,
+    "scored": 1000,
+    "submitted": 1000
+  },
+  "test_oleehyo": {
+    "cdm": 0.985,
+    "cdm_exp_rate": 0.844,
+    "scored": 999,
+    "submitted": 1000
+  },
+  "test_unimer1m": {
+    "cdm": 0.989,
+    "cdm_exp_rate": 0.937,
+    "scored": 997,
+    "submitted": 1000
+  }
+}
